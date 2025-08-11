@@ -28,6 +28,14 @@ ENV/
 
 # Environment Variables
 .env
+.env.local
+.env.*.local
+*.key
+**/secrets/**
+
+# Backup environment files
+.env.backup
+.env.bak
 
 # IDE
 .vscode/

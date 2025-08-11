@@ -27,7 +27,13 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Fail fast if key is missing, with a clear message
 if not OPENAI_API_KEY:
-    st.error("Missing OPENAI_API_KEY. Add it to your .env file.")
+    st.error("❌ Missing OPENAI_API_KEY. Add it to your .env file.")
+    st.info("📝 Copy .env.example to .env and add your OpenAI API key")
+    st.stop()
+
+# Basic API key validation
+if not OPENAI_API_KEY.startswith("sk-"):
+    st.error("⚠️ API key format appears incorrect. OpenAI keys start with 'sk-'")
     st.stop()
 
 client = OpenAI(api_key=OPENAI_API_KEY)
