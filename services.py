@@ -1,65 +1,108 @@
 # services.py
+"""
+High-level service functions for keyword generation.
+Coordinates between LLM client and parsing logic.
+"""
+
 from __future__ import annotations
-import json
-from typing import Dict, Any, Union
+from typing import Dict, Any
+from llm_client import KeywordLLMClient
+from parsing import parse_keywords_from_model, validate_keywords_response, SAFE_OUTPUT
 
-# Safe fallback output structure
-SAFE_OUTPUT = {
-    "informational": [],
-    "transactional": [],
-    "branded": []
-}
+class KeywordService:
+    """Service class for keyword generation operations."""
+    
+    def __init__(self, llm_client: KeywordLLMClient = None):
+        """
+        Initialize the keyword service.
+        
+        Args:
+            llm_client: Optional LLM client instance. If None, creates default.
+        """
+        self.llm_client = llm_client or KeywordLLMClient.create_default()
+    
+    def generate_keywords(
+        self, 
+        business_desc: str, 
+        industry: str = "", 
+        audience: str = "", 
+        location: str = ""
+    ) -> Dict[str, Any]:
+        """
+        Generate and parse keywords for a business.
+        
+        Args:
+            business_desc: Main business description
+            industry: Industry context
+            audience: Target audience
+            location: Geographic location/market
+            
+        Returns:
+            Parsed keywords dictionary with fallback handling
+        """
+        try:
+            # Generate raw response
+            raw_response = self.llm_client.generate_keywords(
+                business_desc, industry, audience, location
+            )
+            
+            # Parse with robust fallback
+            return validate_keywords_response(raw_response)
+            
+        except Exception as e:
+            print(f"Warning: Error in keyword generation: {e}")
+            return SAFE_OUTPUT.copy()
+    
+    def test_service(self) -> bool:
+        """
+        Test the entire service pipeline.
+        
+        Returns:
+            True if service is working, False otherwise
+        """
+        try:
+            # Test LLM connection
+            if not self.llm_client.test_connection():
+                return False
+            
+            # Test with simple input
+            result = self.generate_keywords("online bookstore")
+            
+            # Check if we got valid structure
+            return isinstance(result, dict) and "informational" in result
+            
+        except Exception:
+            return False
 
-def parse_keywords_from_model(raw_text: str) -> dict:
-    """
-    Parse keywords from model response with fallback handling.
-    Tries to extract JSON even if wrapped in prose or code blocks.
-    """
-    try:
-        # First try direct JSON parsing
-        return json.loads(raw_text)
-    except json.JSONDecodeError:
-        # Try to extract JSON from code blocks or prose
-        import re
-        
-        # Look for JSON in code blocks
-        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw_text, re.DOTALL)
-        if json_match:
-            try:
-                return json.loads(json_match.group(1))
-            except json.JSONDecodeError:
-                pass
-        
-        # Look for JSON object in the text
-        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', raw_text, re.DOTALL)
-        if json_match:
-            try:
-                return json.loads(json_match.group(0))
-            except json.JSONDecodeError:
-                pass
-        
-        # Fallback: return empty structure
-        return SAFE_OUTPUT.copy()
-
+# Legacy function for backward compatibility
 def get_keywords_safe(prompt: str) -> Dict[str, Any]:
     """
-    Returns a dict with keys you expect for to_dataframe().
-    Tolerates:
-      - existing JSON dict return (v1.1 behavior)
-      - string return with JSON + extra prose
-      - invalid/malformed JSON (falls back to SAFE_OUTPUT)
+    Legacy function for backward compatibility.
+    
+    Args:
+        prompt: Raw prompt string
+        
+    Returns:
+        Parsed keywords dictionary
     """
-    # Import the function from app.py (where it's actually defined)
     try:
-        from app import get_keywords_text
-        
-        # Get raw text response
-        raw_response = get_keywords_text(prompt)
-        
-        # Parse with robust fallback
-        return parse_keywords_from_model(raw_response)
-        
+        client = KeywordLLMClient.create_default()
+        raw_response = client.generate_keywords_raw(prompt)
+        return validate_keywords_response(raw_response)
     except Exception as e:
         print(f"Warning: Error in get_keywords_safe: {e}")
-        # If anything fails, return safe shape
         return SAFE_OUTPUT.copy()
+
+# Convenience function for quick usage
+def generate_keywords_simple(business_desc: str) -> Dict[str, Any]:
+    """
+    Simple function to generate keywords with minimal setup.
+    
+    Args:
+        business_desc: Business description
+        
+    Returns:
+        Keywords dictionary
+    """
+    service = KeywordService()
+    return service.generate_keywords(business_desc)

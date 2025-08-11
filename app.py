@@ -13,14 +13,12 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from ui_helpers import render_copy_from_dataframe
+from services import KeywordService
+from parsing import SAFE_OUTPUT
 
 # OpenAI SDK (current usage style)
 # pip install --upgrade openai
 from openai import OpenAI
-
-# ------------- App / Model Config ----------------
-MODEL_NAME = "gpt-4o-mini"     # cost-effective, good for structure
-MAX_TOKENS = 700               # generous headroom for 12+ keywords in JSON
 
 # ------------- One-time Setup --------------------
 load_dotenv()  # Load environment variables from .env
@@ -37,14 +35,21 @@ if not OPENAI_API_KEY.startswith("sk-"):
     st.error("⚠️ API key format appears incorrect. OpenAI keys start with 'sk-'")
     st.stop()
 
-client = OpenAI(api_key=OPENAI_API_KEY)
-
 st.set_page_config(page_title="AI Keyword Tool", page_icon="🔍", layout="centered")
 st.title("🔍 AI Keyword Strategy Generator")
 
 # Keep a simple in-memory history for this session
 if "history" not in st.session_state:
     st.session_state.history = []
+
+# Initialize the keyword service
+if "keyword_service" not in st.session_state:
+    try:
+        st.session_state.keyword_service = KeywordService()
+    except Exception as e:
+        st.error(f"❌ Failed to initialize keyword service: {e}")
+        st.info("📝 Check your OpenAI API key in the .env file")
+        st.stop()
 
 # ------------- Small Utilities -------------------
 def slugify(text: str) -> str:
@@ -60,96 +65,6 @@ def default_report_name(business_desc: str) -> str:
     words = business_desc.strip().split()[:3]
     name = " ".join(words)
     return slugify(name) or "keyword-report"
-
-def parse_keywords_from_model(raw_text: str) -> dict:
-    """
-    Parse keywords from model response with fallback handling.
-    Tries to extract JSON even if wrapped in prose or code blocks.
-    """
-    try:
-        # First try direct JSON parsing
-        return json.loads(raw_text)
-    except json.JSONDecodeError:
-        # Try to extract JSON from code blocks or prose
-        import re
-        
-        # Look for JSON in code blocks
-        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw_text, re.DOTALL)
-        if json_match:
-            try:
-                return json.loads(json_match.group(1))
-            except json.JSONDecodeError:
-                pass
-        
-        # Look for JSON object in the text
-        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', raw_text, re.DOTALL)
-        if json_match:
-            try:
-                return json.loads(json_match.group(0))
-            except json.JSONDecodeError:
-                pass
-        
-        # Fallback: return empty structure
-        return {"informational": [], "transactional": [], "branded": []}
-
-def get_keywords_text(prompt: str) -> str:
-    """
-    Call OpenAI and return raw text response.
-    This replaces get_keywords_json to allow for better error handling.
-    """
-    resp = client.chat.completions.create(
-        model=MODEL_NAME,
-        temperature=0.5,  # lower temp => more consistent structure
-        max_tokens=MAX_TOKENS,
-        messages=[
-            {"role": "system", "content": "You only return valid JSON. No prose, no code fences."},
-            {"role": "user", "content": prompt},
-        ],
-    )
-    
-    # Extract raw text from the first choice
-    return resp.choices[0].message.content
-
-def build_prompt(business_desc: str, industry: str, audience: str, location: str) -> str:
-    """Return a strict-JSON prompt instructing the model to group keywords by intent."""
-    return f"""
-You are an expert SEO specialist. For this business, generate 12 keyword ideas grouped by intent.
-
-BUSINESS:
-- Description: {business_desc}
-- Industry: {industry}
-- Target audience: {audience}
-- Location/Market: {location}
-
-OUTPUT REQUIREMENTS:
-Return ONLY valid JSON (no backticks, no commentary) in this exact shape:
-{{
-  "informational": ["...","..."],
-  "transactional": ["...","..."],
-  "branded": ["..."]  // can be empty if none
-}}
-""".strip()
-
-def get_keywords_json(prompt: str) -> dict:
-    """
-    Call OpenAI with guardrails to prefer strict JSON.
-    Returns a Python dict (parsed JSON) or raises an Exception.
-    """
-    resp = client.chat.completions.create(
-        model=MODEL_NAME,
-        temperature=0.5,  # lower temp => more consistent structure
-        max_tokens=MAX_TOKENS,
-        messages=[
-            {"role": "system", "content": "You only return valid JSON. No prose, no code fences."},
-            {"role": "user", "content": prompt},
-        ],
-    )
-
-    # Extract raw text from the first choice
-    raw = resp.choices[0].message.content
-
-    # Parse JSON (will raise JSONDecodeError if invalid)
-    return json.loads(raw)
 
 def to_dataframe(data: dict) -> pd.DataFrame:
     """
@@ -182,13 +97,13 @@ if st.button("Generate Keywords"):
 
     with st.spinner("Generating keywords..."):
         try:
-            # 1) Build prompt and call the model.
-            prompt = build_prompt(business_desc, industry, audience, location)
-
-            # IMPORTANT: get the RAW text from the model, then parse with our robust fallback.
-            # If your current function returns a dict, switch it to return raw text (or add a new one).
-            raw_response = get_keywords_text(prompt)  # <-- returns raw string from the LLM
-            data = parse_keywords_from_model(raw_response)  # survives extra prose / malformed JSON
+            # Use the new service to generate keywords
+            data = st.session_state.keyword_service.generate_keywords(
+                business_desc=business_desc,
+                industry=industry,
+                audience=audience,
+                location=location
+            )
 
             # 2) Build table from parsed data
             df = to_dataframe(data)
