@@ -12,6 +12,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
+from ui_helpers import render_copy_from_dataframe
 
 # OpenAI SDK (current usage style)
 # pip install --upgrade openai
@@ -49,6 +50,65 @@ if "history" not in st.session_state:
 def slugify(text: str) -> str:
     """Create a simple filename-friendly slug from a string."""
     return "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in text.strip())[:60].strip("-")
+
+def default_report_name(business_desc: str) -> str:
+    """Generate a default report name from business description."""
+    if not business_desc.strip():
+        return "keyword-report"
+    
+    # Take first few words and slugify
+    words = business_desc.strip().split()[:3]
+    name = " ".join(words)
+    return slugify(name) or "keyword-report"
+
+def parse_keywords_from_model(raw_text: str) -> dict:
+    """
+    Parse keywords from model response with fallback handling.
+    Tries to extract JSON even if wrapped in prose or code blocks.
+    """
+    try:
+        # First try direct JSON parsing
+        return json.loads(raw_text)
+    except json.JSONDecodeError:
+        # Try to extract JSON from code blocks or prose
+        import re
+        
+        # Look for JSON in code blocks
+        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw_text, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(1))
+            except json.JSONDecodeError:
+                pass
+        
+        # Look for JSON object in the text
+        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', raw_text, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(0))
+            except json.JSONDecodeError:
+                pass
+        
+        # Fallback: return empty structure
+        return {"informational": [], "transactional": [], "branded": []}
+
+def get_keywords_text(prompt: str) -> str:
+    """
+    Call OpenAI and return raw text response.
+    This replaces get_keywords_json to allow for better error handling.
+    """
+    resp = client.chat.completions.create(
+        model=MODEL_NAME,
+        temperature=0.5,  # lower temp => more consistent structure
+        max_tokens=MAX_TOKENS,
+        messages=[
+            {"role": "system", "content": "You only return valid JSON. No prose, no code fences."},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    
+    # Extract raw text from the first choice
+    return resp.choices[0].message.content
 
 def build_prompt(business_desc: str, industry: str, audience: str, location: str) -> str:
     """Return a strict-JSON prompt instructing the model to group keywords by intent."""
@@ -122,10 +182,15 @@ if st.button("Generate Keywords"):
 
     with st.spinner("Generating keywords..."):
         try:
+            # 1) Build prompt and call the model.
             prompt = build_prompt(business_desc, industry, audience, location)
-            data = get_keywords_json(prompt)  # dict (informational/transactional/branded)
 
-            # Build table
+            # IMPORTANT: get the RAW text from the model, then parse with our robust fallback.
+            # If your current function returns a dict, switch it to return raw text (or add a new one).
+            raw_response = get_keywords_text(prompt)  # <-- returns raw string from the LLM
+            data = parse_keywords_from_model(raw_response)  # survives extra prose / malformed JSON
+
+            # 2) Build table from parsed data
             df = to_dataframe(data)
 
             if df.empty:
@@ -135,22 +200,33 @@ if st.button("Generate Keywords"):
                 st.markdown("### 🗂️ Categorized Keywords")
                 st.dataframe(df, use_container_width=True)
 
-                # Download as CSV (nice filename with date + slug)
-                today = datetime.now().strftime("%Y-%m-%d")
-                base = slugify(business_desc) or "keywords"
-                csv_name = f"{base}-{today}.csv"
-                csv_bytes = df.to_csv(index=False).encode("utf-8")
-                st.download_button("⬇️ Download CSV", data=csv_bytes, file_name=csv_name, mime="text/csv")
+                # 3) Quick copy button (newline-separated list of keywords)
+                render_copy_from_dataframe(df, column="keyword", delimiter="\n", label="Copy keyword list")
 
-                # Quick markdown by category (also nice for copy-paste)
+                # 4) Report name input -> nice CSV filename (slugified)
+                report_name = st.text_input(
+                    "Report name",
+                    value=default_report_name(business_desc),
+                    help="Used to name the CSV file you download."
+                )
+                csv_bytes = df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    "⬇️ Download CSV",
+                    data=csv_bytes,
+                    file_name=f"{slugify(report_name)}.csv",
+                    mime="text/csv",
+                )
+
+                # 5) Quick markdown by category (nice for copy-paste)
                 st.markdown("### Quick View (by category)")
                 for cat in ("informational", "transactional", "branded"):
-                    kws = data.get(cat) or []
+                    kws = (data.get(cat) or []) if isinstance(data, dict) else []
                     if kws:
                         st.markdown(f"**{cat.title()}**")
-                        st.markdown("- " + "\n- ".join(kws))
+                        st.markdown("- " + "\n- ".join(map(str, kws)))
 
-                # Save lightweight run history (for the sidebar)
+                # 6) Save lightweight run history (for the sidebar)
+                today = datetime.now().strftime("%Y-%m-%d")
                 st.session_state.history.append({
                     "business": business_desc,
                     "industry": industry,
@@ -161,7 +237,7 @@ if st.button("Generate Keywords"):
                 })
 
         except json.JSONDecodeError:
-            # If the model slips and returns non-JSON text
+            # Kept for backward-compat if you still call a JSON-returning helper elsewhere.
             st.error("The model returned invalid JSON. Please try again or simplify inputs.")
         except Exception as e:
             # Network issues / API errors / key problems
