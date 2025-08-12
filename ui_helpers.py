@@ -54,39 +54,55 @@ def render_copy_to_clipboard(text: str, label: str = "Copy to clipboard") -> Non
         height=40,  # Reserve a bit of space in the layout
     )
 
-
 def render_copy_from_dataframe(
     df,
     column: str = "keyword",
     delimiter: str = "\n",
     label: Optional[str] = None,
     transform: Optional[callable] = None,
+    include_category: bool = False,
+    category_column: str = "category",
+    max_chars: int = 200_000,
 ) -> None:
     """
-    Render a copy button that copies all values from a specific DataFrame column.
-    
-    Args:
-        df: The pandas DataFrame to extract from.
-        column: The column name to copy (default: "keyword").
-        delimiter: How to join the items into a single string (default: newline).
-        label: The label shown on the copy button (default: "Copy <column> list").
-        transform: Optional function to transform each value before copying
-                   (e.g., lambda x: x.lower()).
+    Render a copy button that copies values from a DataFrame.
+
+    - Trims whitespace, drops NaNs/blanks.
+    - Optionally copies "keyword,category" pairs.
+    - Warns if content is very large (clipboard limits vary by OS/browser).
     """
-    # If DataFrame is empty or the column doesn't exist, show a friendly message
-    if df is None or column not in df.columns:
+    if df is None or df.empty:
+        st.info("Nothing to copy yet.")
+        return
+    if column not in df.columns:
         st.info(f"Nothing to copy. Column `{column}` not found.")
         return
 
-    # Convert the column to strings and store as a list
-    items: Iterable[str] = df[column].astype(str).tolist()
+    series = df[column].astype(str).str.strip()
+    series = series[series.astype(bool)]  # drop empty strings
 
-    # Optionally transform each value before joining
     if transform:
-        items = [transform(x) for x in items]
+        series = series.map(transform)
 
-    # Join all items into one big string
+    if include_category and category_column in df.columns:
+        # Build "keyword,category" lines
+        cat = df.loc[series.index, category_column].astype(str).str.strip()
+        items = [f"{k},{c}" for k, c in zip(series.tolist(), cat.tolist())]
+    else:
+        items = series.tolist()
+
+    if not items:
+        st.info("Nothing to copy after filtering.")
+        return
+
     text = delimiter.join(items)
 
-    # Reuse the base copy-to-clipboard function
-    render_copy_to_clipboard(text, label or f"Copy {column} list")
+    # Gentle guardrail for extremely large payloads
+    if len(text) > max_chars:
+        st.warning(
+            f"Copy content is quite large ({len(text):,} chars). "
+            "Some browsers may truncate the clipboard."
+        )
+
+    btn_label = label or f"Copy {column} list ({len(items)})"
+    render_copy_to_clipboard(text, btn_label)

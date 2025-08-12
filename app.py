@@ -115,8 +115,15 @@ if st.button("Generate Keywords"):
                 st.markdown("### 🗂️ Categorized Keywords")
                 st.dataframe(df, use_container_width=True)
 
-                # 3) Quick copy button (newline-separated list of keywords)
-                render_copy_from_dataframe(df, column="keyword", delimiter="\n", label="Copy keyword list")
+                # 3) Copy options with toggle for format
+                copy_pairs = st.toggle("Copy as CSV (keyword,category)", value=False)
+                render_copy_from_dataframe(
+                    df,
+                    column="keyword",
+                    delimiter="\n",
+                    label="Copy keyword list" if not copy_pairs else "Copy as CSV pairs",
+                    include_category=copy_pairs
+                )
 
                 # 4) Report name input -> nice CSV filename (slugified)
                 report_name = st.text_input(
