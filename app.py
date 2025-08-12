@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from ui_helpers import render_copy_from_dataframe
 from services import KeywordService
 from parsing import SAFE_OUTPUT
+from utils import slugify, default_report_name
 
 # OpenAI SDK (current usage style)
 # pip install --upgrade openai
@@ -131,6 +132,8 @@ if st.button("Generate Keywords"):
                     value=default_report_name(business_desc),
                     help="Used to name the CSV file you download."
                 )
+                if not report_name.strip():
+                    st.warning("Report name is empty. A generic name will be used.")
                 csv_bytes = df.to_csv(index=False).encode("utf-8")
                 st.download_button(
                     "⬇️ Download CSV",
