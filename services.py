@@ -26,7 +26,8 @@ class KeywordService:
         business_desc: str, 
         industry: str = "", 
         audience: str = "", 
-        location: str = ""
+        location: str = "",
+        prompt_template: str = "default_seo"
     ) -> Dict[str, Any]:
         """
         Generate and parse keywords for a business.
@@ -36,14 +37,15 @@ class KeywordService:
             industry: Industry context
             audience: Target audience
             location: Geographic location/market
+            prompt_template: Name of the prompt template to use
             
         Returns:
             Parsed keywords dictionary with fallback handling
         """
         try:
-            # Generate raw response
+            # Generate raw response with specified prompt template
             raw_response = self.llm_client.generate_keywords(
-                business_desc, industry, audience, location
+                business_desc, industry, audience, location, prompt_template
             )
             
             # Parse with robust fallback

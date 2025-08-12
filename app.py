@@ -16,6 +16,7 @@ from ui_helpers import render_copy_from_dataframe
 from services import KeywordService
 from parsing import SAFE_OUTPUT
 from utils import slugify, default_report_name
+from prompt_manager import prompt_manager
 
 # OpenAI SDK (current usage style)
 # pip install --upgrade openai
@@ -81,6 +82,23 @@ def to_dataframe(data: dict) -> pd.DataFrame:
 # ------------- UI: Inputs ------------------------
 business_desc = st.text_input("Describe your website or business:")
 
+# Prompt strategy toggle
+st.markdown("#### 🎯 Keyword Strategy")
+prompt_options = prompt_manager.get_prompt_display_names()
+available_prompts = list(prompt_options.keys())
+
+if available_prompts:
+    selected_prompt_display = st.selectbox(
+        "Choose your keyword research approach:",
+        options=[prompt_options[key] for key in available_prompts],
+        index=0
+    )
+    # Get the actual prompt key from the display name
+    selected_prompt = next(key for key, display in prompt_options.items() if display == selected_prompt_display)
+else:
+    selected_prompt = "default_seo"
+    st.info("💡 Using default SEO strategy (prompt files not found)")
+
 col1, col2, col3 = st.columns(3)
 with col1:
     industry = st.text_input("Industry (e.g., skincare, SaaS, fitness)", "")
@@ -98,12 +116,13 @@ if st.button("Generate Keywords"):
 
     with st.spinner("Generating keywords..."):
         try:
-            # Use the new service to generate keywords
+            # Use the new service to generate keywords with selected prompt
             data = st.session_state.keyword_service.generate_keywords(
                 business_desc=business_desc,
                 industry=industry,
                 audience=audience,
-                location=location
+                location=location,
+                prompt_template=selected_prompt
             )
 
             # 2) Build table from parsed data

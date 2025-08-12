@@ -9,6 +9,7 @@ import os
 from typing import Dict, Any, Optional
 from openai import OpenAI
 from dotenv import load_dotenv
+from prompt_manager import prompt_manager
 
 # Load environment variables
 load_dotenv()
@@ -50,21 +51,34 @@ class KeywordLLMClient:
         business_desc: str, 
         industry: str = "", 
         audience: str = "", 
-        location: str = ""
+        location: str = "",
+        prompt_template: str = "default_seo"
     ) -> str:
         """
-        Build a comprehensive prompt for keyword generation.
+        Build a comprehensive prompt for keyword generation using templates.
         
         Args:
             business_desc: Main business description
             industry: Industry context
             audience: Target audience
             location: Geographic location/market
+            prompt_template: Name of the prompt template to use
             
         Returns:
             Formatted prompt string
         """
-        return f"""
+        try:
+            # Use prompt manager to get and format the template
+            return prompt_manager.format_prompt(
+                prompt_template,
+                business_desc=business_desc,
+                industry=industry or "Not specified",
+                audience=audience or "General",
+                location=location or "Global"
+            )
+        except (ValueError, KeyError):
+            # Fallback to default hardcoded prompt if template fails
+            return f"""
 You are an expert SEO specialist. Generate 12 SEO keyword ideas for this business, grouped by search intent.
 
 BUSINESS DETAILS:
@@ -129,7 +143,8 @@ Do not include any explanation, code blocks, or additional text.
         business_desc: str, 
         industry: str = "", 
         audience: str = "", 
-        location: str = ""
+        location: str = "",
+        prompt_template: str = "default_seo"
     ) -> str:
         """
         Generate keywords for a business with built-in prompt.
@@ -139,11 +154,12 @@ Do not include any explanation, code blocks, or additional text.
             industry: Industry context
             audience: Target audience  
             location: Geographic location/market
+            prompt_template: Name of the prompt template to use
             
         Returns:
             Raw response text from the LLM
         """
-        prompt = self.build_keyword_prompt(business_desc, industry, audience, location)
+        prompt = self.build_keyword_prompt(business_desc, industry, audience, location, prompt_template)
         return self.generate_keywords_raw(prompt)
     
     @classmethod
