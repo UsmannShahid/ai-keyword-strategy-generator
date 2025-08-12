@@ -17,6 +17,7 @@ from services import KeywordService
 from parsing import SAFE_OUTPUT
 from utils import slugify, default_report_name
 from prompt_manager import prompt_manager
+from scoring import add_scores
 
 # OpenAI SDK (current usage style)
 # pip install --upgrade openai
@@ -127,13 +128,37 @@ if st.button("Generate Keywords"):
 
             # 2) Build table from parsed data
             df = to_dataframe(data)
+            
+            # Add scoring and priority
+            df = add_scores(df, intent_col="category", kw_col="keyword")
 
             if df.empty:
                 st.info("No keywords returned. Try broadening your description or removing constraints.")
             else:
                 st.success(f"Generated {len(df)} keywords.")
-                st.markdown("### 🗂️ Categorized Keywords")
-                st.dataframe(df, use_container_width=True)
+                st.markdown("""
+### 🗂️ Categorized Keywords
+**Opportunity** <span title="A 0–100 estimate of keyword potential based on intent, specificity, commercial terms, and estimated competition.">ℹ️</span>
+""", unsafe_allow_html=True)
+                st.dataframe(
+                    df[["priority","keyword","category","opportunity"]],
+                    use_container_width=True
+                )
+
+                # Quick wins section
+                top_n = 15
+                quick_wins = df.sort_values(["opportunity","keyword"], ascending=[False, True]).head(top_n)
+
+                with st.expander(f"⚡ Quick Wins (Top {top_n} by Opportunity)", expanded=True):
+                    st.dataframe(quick_wins[["priority","keyword","category","opportunity"]], use_container_width=True)
+                    # Optional: title ideas via simple template (LLM-based later)
+                    st.markdown("#### Suggested Titles")
+                    for _, row in quick_wins.iterrows():
+                        if row["category"] == "transactional":
+                            idea = f"Best {row['keyword'].title()} in {location or '2025'}: Pricing, Pros & Cons"
+                        else:
+                            idea = f"How to Choose {row['keyword'].title()} ({location or '2025'} Guide)"
+                        st.markdown(f"- {idea}")
 
                 # 3) Copy options with toggle for format
                 copy_pairs = st.toggle("Copy as CSV (keyword,category)", value=False)
