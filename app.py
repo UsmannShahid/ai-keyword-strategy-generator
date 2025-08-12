@@ -23,6 +23,17 @@ from scoring import add_scores
 # pip install --upgrade openai
 from openai import OpenAI
 
+# Color styling for intent categories
+INTENT_COLORS = {
+    "transactional": "#d1fae5",  # green-ish
+    "informational": "#dbeafe",  # blue-ish
+    "navigational":  "#fde68a",  # amber-ish
+    "branded":       "#fce7f3",  # pink-ish
+}
+
+def style_intent(s: pd.Series):
+    return [f"background-color: {INTENT_COLORS.get(v.lower(), '#f3f4f6')}" for v in s]
+
 # ------------- One-time Setup --------------------
 load_dotenv()  # Load environment variables from .env
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -140,17 +151,24 @@ if st.button("Generate Keywords"):
 ### 🗂️ Categorized Keywords
 **Opportunity** <span title="A 0–100 estimate of keyword potential based on intent, specificity, commercial terms, and estimated competition.">ℹ️</span>
 """, unsafe_allow_html=True)
-                st.dataframe(
-                    df[["priority","keyword","category","opportunity"]],
-                    use_container_width=True
+                df = df.sort_values(["priority"]).reset_index(drop=True)
+                styled = (
+                    df[["priority","keyword","category","opportunity"]]
+                      .style.apply(style_intent, subset=["category"])
                 )
+                st.dataframe(styled, use_container_width=True)
 
                 # Quick wins section
                 top_n = 15
                 quick_wins = df.sort_values(["opportunity","keyword"], ascending=[False, True]).head(top_n)
 
                 with st.expander(f"⚡ Quick Wins (Top {top_n} by Opportunity)", expanded=True):
-                    st.dataframe(quick_wins[["priority","keyword","category","opportunity"]], use_container_width=True)
+                    st.caption(f"{len(quick_wins)} suggestions shown")
+                    quick_wins_styled = (
+                        quick_wins[["priority","keyword","category","opportunity"]]
+                          .style.apply(style_intent, subset=["category"])
+                    )
+                    st.dataframe(quick_wins_styled, use_container_width=True)
                     # Optional: title ideas via simple template (LLM-based later)
                     st.markdown("#### Suggested Titles")
                     for _, row in quick_wins.iterrows():
@@ -159,6 +177,15 @@ if st.button("Generate Keywords"):
                         else:
                             idea = f"How to Choose {row['keyword'].title()} ({location or '2025'} Guide)"
                         st.markdown(f"- {idea}")
+                    
+                    # Quick Wins copy functionality
+                    copy_pairs = st.toggle("Copy Quick Wins as CSV (keyword,category)", value=False)
+                    render_copy_from_dataframe(
+                        df.sort_values("priority").head(15),
+                        include_category=copy_pairs,
+                        delimiter="\n",
+                        label="Copy Quick Wins"
+                    )
 
                 # 3) Copy options with toggle for format
                 copy_pairs = st.toggle("Copy as CSV (keyword,category)", value=False)
@@ -169,6 +196,14 @@ if st.button("Generate Keywords"):
                     label="Copy keyword list" if not copy_pairs else "Copy as CSV pairs",
                     include_category=copy_pairs
                 )
+
+                # Brief generation placeholder
+                selected = st.multiselect(
+                    "Select keywords to generate briefs",
+                    options=df["keyword"].tolist(),
+                    max_selections=10
+                )
+                st.button("Generate Briefs (coming soon)", disabled=not selected)
 
                 # 4) Report name input -> nice CSV filename (slugified)
                 report_name = st.text_input(
