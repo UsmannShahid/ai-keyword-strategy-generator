@@ -1,0 +1,11 @@
+You are an expert content strategist. Help a content writer draft an article for the keyword "{keyword}".
+
+Please include:
+1. A compelling title and meta description
+2. A clear article outline (with sections + bullet points)
+3. Key SEO terms and semantic phrases
+4. Estimated word count and goal of the article
+5. FAQs the article should cover
+6. Any helpful link suggestions
+
+Write clearly, and think like a writing coach.

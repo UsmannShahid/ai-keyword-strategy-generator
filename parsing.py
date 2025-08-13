@@ -7,7 +7,7 @@ Handles various response formats including JSON, prose, and malformed responses.
 from __future__ import annotations
 import json
 import re
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 
 # Safe fallback output structure
 SAFE_OUTPUT = {
@@ -209,3 +209,66 @@ def validate_keywords_response(data: Any) -> Dict[str, List[str]]:
         parsed = SAFE_OUTPUT.copy()
     
     return clean_keywords(parsed)
+
+# =========================
+# Brief parsing helpers
+# =========================
+
+def parse_brief_output(raw: str) -> Tuple[Dict[str, Any], bool]:
+    """
+    Try to parse LLM output for content briefs as JSON.
+    Returns (data, is_json). If not JSON, returns ({'raw': raw}, False).
+    Accepts plain JSON or JSON inside Markdown code fences.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return {"raw": ""}, False
+
+    # 1) Direct JSON
+    try:
+        return json.loads(raw), True
+    except Exception:
+        pass
+
+    # 2) JSON in code fences (``` ... ```), possibly with ```json
+    if raw.startswith("```"):
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            snippet = raw[start:end+1]
+            try:
+                return json.loads(snippet), True
+            except Exception:
+                pass
+
+    # 3) Last-resort: try to pull the biggest {...} block
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        snippet = raw[start:end+1]
+        try:
+            return json.loads(snippet), True
+        except Exception:
+            pass
+
+    # Fallback to raw text
+    return {"raw": raw}, False
+
+
+def detect_placeholders(brief: Dict[str, Any]) -> bool:
+    """
+    Heuristic to flag generic placeholders in a brief
+    (e.g., 'Chair Name #1', 'Product #1', etc.).
+    """
+    try:
+        text = json.dumps(brief, ensure_ascii=False).lower()
+    except Exception:
+        text = str(brief).lower()
+
+    patterns = [
+        "name #1", "name #2",
+        "product #1", "product #2",
+        "chair name #1", "model #1",
+        "example #1", "h3 1", "h2 1"
+    ]
+    return any(p in text for p in patterns)

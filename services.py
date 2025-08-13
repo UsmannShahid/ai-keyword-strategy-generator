@@ -5,9 +5,12 @@ Coordinates between LLM client and parsing logic.
 """
 
 from __future__ import annotations
-from typing import Dict, Any
+import time
+from typing import Dict, Any, Tuple, Optional
 from llm_client import KeywordLLMClient
 from parsing import parse_keywords_from_model, validate_keywords_response, SAFE_OUTPUT
+import llm_client
+from prompt_manager import prompt_manager
 
 class KeywordService:
     """Service class for keyword generation operations."""
@@ -55,6 +58,37 @@ class KeywordService:
             print(f"Warning: Error in keyword generation: {e}")
             return SAFE_OUTPUT.copy()
     
+    def generate_content_brief(
+        self,
+        seed_keyword: str,
+        variant: str = "A"
+    ) -> str:
+        """
+        Generate content brief for a specific keyword using prompt variants.
+        
+        Args:
+            seed_keyword: The keyword to generate content brief for
+            variant: Prompt variant to use ('A' or 'B')
+            
+        Returns:
+            Generated content brief text
+        """
+        try:
+            # Choose a variant from UI or config: 'A' or 'B'
+            variant = variant  # e.g., from a Streamlit selectbox
+
+            prompt = prompt_manager.format_prompt_variant(
+                base_name="content_brief",
+                variant=variant,
+                keyword=seed_keyword,  # your variable
+            )
+            # send `prompt` to llm_client.generate(...)
+            return self.llm_client.generate_keywords_raw(prompt)
+            
+        except Exception as e:
+            print(f"Warning: Error in content brief generation: {e}")
+            return f"Error generating content brief for '{seed_keyword}': {e}"
+    
     def test_service(self) -> bool:
         """
         Test the entire service pipeline.
@@ -88,9 +122,11 @@ def get_keywords_safe(prompt: str) -> Dict[str, Any]:
         Parsed keywords dictionary
     """
     try:
-        client = KeywordLLMClient.create_default()
-        raw_response = client.generate_keywords_raw(prompt)
-        return validate_keywords_response(raw_response)
+        # Use legacy text function so tests can monkeypatch it
+        raw_response = llm_client.get_keywords_text(prompt)
+        # parse_keywords_from_model can handle wrapped JSON / prose
+        parsed = parse_keywords_from_model(raw_response)
+        return validate_keywords_response(parsed)
     except Exception as e:
         print(f"Warning: Error in get_keywords_safe: {e}")
         return SAFE_OUTPUT.copy()
@@ -108,3 +144,44 @@ def generate_keywords_simple(business_desc: str) -> Dict[str, Any]:
     """
     service = KeywordService()
     return service.generate_keywords(business_desc)
+
+def generate_brief_with_variant(
+    *,
+    keyword: str,
+    variant: str,
+) -> Tuple[str, str, float, Optional[Dict[str, int]]]:
+    """
+    Generate content brief with timing and usage tracking.
+    
+    Args:
+        keyword: The keyword to generate content brief for
+        variant: Prompt variant to use ('A' or 'B')
+    
+    Returns: 
+        Tuple of (output_text, prompt_used, latency_ms, usage_dict)
+        usage_dict example: {"prompt_tokens": 123, "completion_tokens": 456}
+    """
+    prompt = prompt_manager.format_prompt_variant(
+        base_name="content_brief",
+        variant=variant,
+        keyword=keyword,
+    )
+    
+    t0 = time.monotonic()
+    
+    # Use the existing LLM client to generate text
+    client = KeywordLLMClient.create_default()
+    result = client.generate_keywords_raw(prompt)
+    
+    latency_ms = (time.monotonic() - t0) * 1000
+
+    # Normalize output + usage
+    # For now, the client returns a string, so we don't have usage data
+    # This can be enhanced later when the LLM client returns usage information
+    if isinstance(result, dict):
+        output = result.get("text") or result.get("output") or ""
+        usage = result.get("usage")  # e.g., {"prompt_tokens":..., "completion_tokens":...}
+    else:
+        output, usage = str(result), None
+
+    return output, prompt, latency_ms, usage

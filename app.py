@@ -13,11 +13,12 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from ui_helpers import render_copy_from_dataframe
-from services import KeywordService
-from parsing import SAFE_OUTPUT
+from services import KeywordService, generate_brief_with_variant
+from parsing import SAFE_OUTPUT, parse_brief_output, detect_placeholders
 from utils import slugify, default_report_name
 from prompt_manager import prompt_manager
 from scoring import add_scores
+from eval_logger import log_eval
 
 # OpenAI SDK (current usage style)
 # pip install --upgrade openai
@@ -38,6 +39,51 @@ def style_intent(s: pd.Series):
 load_dotenv()  # Load environment variables from .env
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# --- Legacy compatibility (tests expect these symbols) ---
+# Provide a lazily created OpenAI client & helper functions used in older tests.
+client = None
+try:
+    if OPENAI_API_KEY:
+        client = OpenAI(api_key=OPENAI_API_KEY)
+except Exception:
+    client = None  # Tests will patch this.
+
+def build_prompt(business_desc: str, industry: str = "", audience: str = "", location: str = "") -> str:
+    """Legacy prompt builder retained for test suite.
+    Returns instructions to produce valid JSON with informational, transactional, branded keys.
+    """
+    parts = [
+        f"Business Description: {business_desc.strip()}",
+    ]
+    if industry:
+        parts.append(f"Industry: {industry.strip()}")
+    if audience:
+        parts.append(f"Audience: {audience.strip()}")
+    if location:
+        parts.append(f"Location: {location.strip()}")
+    parts.append(
+        (
+            "Return valid JSON with exactly these keys: informational, transactional, branded. "
+            "Each value must be a list of keyword strings. Do NOT include explanations."
+        )
+    )
+    return "\n".join(parts)
+
+def get_keywords_json(prompt: str):
+    """Legacy helper expected by tests. Uses chat.completions style mocked in tests.
+    Returns parsed JSON content from first choice; propagates JSON errors.
+    """
+    if client is None:
+        raise RuntimeError("OpenAI client not initialized")
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.4,
+    )
+    raw = resp.choices[0].message.content
+    data = json.loads(raw)  # Let JSONDecodeError bubble up for tests
+    return data
+
 # Fail fast if key is missing, with a clear message
 if not OPENAI_API_KEY:
     st.error("❌ Missing OPENAI_API_KEY. Add it to your .env file.")
@@ -51,6 +97,13 @@ if not OPENAI_API_KEY.startswith("sk-"):
 
 st.set_page_config(page_title="AI Keyword Tool", page_icon="🔍", layout="centered")
 st.title("🔍 AI Keyword Strategy Generator")
+
+# Quick navigation link to A/B comparison page
+try:
+    st.sidebar.page_link("pages/2_📊_Compare_Runs.py", label="📊 Compare Runs")
+except Exception:
+    # Fallback (older Streamlit versions without page_link)
+    pass
 
 # Keep a simple in-memory history for this session
 if "history" not in st.session_state:
@@ -247,6 +300,102 @@ if st.button("Generate Keywords"):
             # Network issues / API errors / key problems
             st.error(f"Error generating keywords: {e}")
             st.info("Check your OpenAI API key, internet connection, or try again in a minute.")
+
+# ------------- Content Brief Generator with A/B Testing -----------
+st.markdown("---")
+st.markdown("## 📝 AI Content Brief Generator")
+
+# --- Persisted variant selection ---
+if "variant" not in st.session_state:
+    # Default to first available
+    st.session_state.variant = (prompt_manager.get_variants("content_brief") or ["A"])[0]
+
+variants = prompt_manager.get_variants("content_brief")
+st.session_state.variant = st.selectbox(
+    "Prompt Variant (A/B)",
+    variants if variants else ["A"],
+    index=(variants.index(st.session_state.variant) if variants and st.session_state.variant in variants else 0)
+)
+
+# --- Inputs ---
+keyword = st.text_input("Enter keyword", placeholder="e.g., best ergonomic chair for home office")
+
+# --- Action ---
+if st.button("Generate Brief", type="primary") and keyword:
+    with st.spinner("Generating brief..."):
+        output, prompt_used, latency_ms, usage = generate_brief_with_variant(
+            keyword=keyword,
+            variant=st.session_state.variant,
+        )
+
+    st.subheader("AI Content Brief")
+    
+    # Parse output and detect issues
+    data, is_json = parse_brief_output(output)
+    
+    auto_flags = []
+    # Heuristic 1: placeholder detection
+    if is_json and detect_placeholders(data):
+        auto_flags.append("Detected generic placeholders (e.g., 'Chair Name #1').")
+    # Heuristic 2: very short output
+    if (output or '').strip() and len(output.strip()) < 400:
+        auto_flags.append("Output is quite short (<400 chars) – may be truncated or low quality.")
+    # Heuristic 3: missing headings if JSON has structure but few sections
+    if is_json and isinstance(data, dict):
+        # Count plausible section keys
+        section_keys = [k for k in data.keys() if any(token in k.lower() for token in ["intro","outline","h1","h2","sections","faq","conclusion","title"])]
+        if len(section_keys) <= 2:
+            auto_flags.append("Parsed JSON has very few structured sections – might be incomplete.")
+    # Heuristic 4: count of markdown headings in raw output (only for non-JSON outputs)
+    if output and not is_json and output.count("\n#") < 2 and output.lower().count("##") < 2:
+        auto_flags.append("Few or no markdown headings detected – consider prompting for structured outline.")
+
+    # Show auto-detected flags if any
+    if auto_flags:
+        st.warning("⚠️ **Auto-detected issues:**")
+        for flag in auto_flags:
+            st.markdown(f"- {flag}")
+    
+    st.markdown(output or "_No output_")
+    
+    # Optional: show parsed JSON if available
+    if is_json and isinstance(data, dict):
+        with st.expander("Parsed JSON Structure"):
+            st.json(data)
+
+    with st.expander("Debug / Prompt Details"):
+        st.code(prompt_used, language="markdown")
+        if usage:
+            st.json(usage)
+        st.caption(f"Latency: {latency_ms:.0f} ms")
+
+    # --- Feedback & Logging ---
+    st.markdown("---")
+    st.subheader("How good was this brief?")
+    rating = st.slider("Rating (1=poor, 5=excellent)", min_value=1, max_value=5, value=4)
+    notes = st.text_area("Optional notes (what was good/bad, missing headings, etc.)")
+
+    if st.button("Save outcome"):
+        tokens_prompt = usage.get("prompt_tokens") if usage else None
+        tokens_completion = usage.get("completion_tokens") if usage else None
+        log_eval(
+            variant=st.session_state.variant,
+            keyword=keyword,
+            prompt=prompt_used,
+            output=output,
+            latency_ms=latency_ms,
+            tokens_prompt=tokens_prompt,
+            tokens_completion=tokens_completion,
+            user_rating=rating,
+            user_notes=notes,
+            extra={
+                "app_version": "beta-mvp",
+                "auto_flags": auto_flags,
+                "is_json": is_json,
+                "output_chars": len(output or '')
+            },
+        )
+        st.success("Saved! This run is now logged for A/B analysis.")
 
 # ------------- Sidebar: Help + History -----------
 st.sidebar.title("How to Use")
