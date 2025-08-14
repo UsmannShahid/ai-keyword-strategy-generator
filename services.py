@@ -82,8 +82,8 @@ class KeywordService:
                 variant=variant,
                 keyword=seed_keyword,  # your variable
             )
-            # send `prompt` to llm_client.generate(...)
-            return self.llm_client.generate_keywords_raw(prompt)
+            # send `prompt` to llm_client.generate(...) with JSON mode for structured output
+            return self.llm_client.generate_content_brief(prompt)
             
         except Exception as e:
             print(f"Warning: Error in content brief generation: {e}")
@@ -169,9 +169,9 @@ def generate_brief_with_variant(
     
     t0 = time.monotonic()
     
-    # Use the existing LLM client to generate text
+    # Use the existing LLM client to generate content brief with JSON mode
     client = KeywordLLMClient.create_default()
-    result = client.generate_keywords_raw(prompt)
+    result = client.generate_content_brief(prompt)
     
     latency_ms = (time.monotonic() - t0) * 1000
 

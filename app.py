@@ -19,10 +19,21 @@ from utils import slugify, default_report_name
 from prompt_manager import prompt_manager
 from scoring import add_scores
 from eval_logger import log_eval
+from brief_renderer import brief_to_markdown
+from parsing import parse_brief_output
+
 
 # OpenAI SDK (current usage style)
 # pip install --upgrade openai
 from openai import OpenAI
+
+# Custom CSS for better reading width and spacing
+st.markdown("""
+<style>
+section.main .block-container { max-width: 900px; }
+h2, h3 { margin-top: 1.1rem !important; }
+</style>
+""", unsafe_allow_html=True)
 
 # Color styling for intent categories
 INTENT_COLORS = {
@@ -328,40 +339,29 @@ if st.button("Generate Brief", type="primary") and keyword:
             variant=st.session_state.variant,
         )
 
+    # --- Render result (modern brief) ---
     st.subheader("AI Content Brief")
-    
-    # Parse output and detect issues
-    data, is_json = parse_brief_output(output)
-    
-    auto_flags = []
-    # Heuristic 1: placeholder detection
-    if is_json and detect_placeholders(data):
-        auto_flags.append("Detected generic placeholders (e.g., 'Chair Name #1').")
-    # Heuristic 2: very short output
-    if (output or '').strip() and len(output.strip()) < 400:
-        auto_flags.append("Output is quite short (<400 chars) – may be truncated or low quality.")
-    # Heuristic 3: missing headings if JSON has structure but few sections
-    if is_json and isinstance(data, dict):
-        # Count plausible section keys
-        section_keys = [k for k in data.keys() if any(token in k.lower() for token in ["intro","outline","h1","h2","sections","faq","conclusion","title"])]
-        if len(section_keys) <= 2:
-            auto_flags.append("Parsed JSON has very few structured sections – might be incomplete.")
-    # Heuristic 4: count of markdown headings in raw output (only for non-JSON outputs)
-    if output and not is_json and output.count("\n#") < 2 and output.lower().count("##") < 2:
-        auto_flags.append("Few or no markdown headings detected – consider prompting for structured outline.")
 
-    # Show auto-detected flags if any
-    if auto_flags:
-        st.warning("⚠️ **Auto-detected issues:**")
-        for flag in auto_flags:
-            st.markdown(f"- {flag}")
-    
-    st.markdown(output or "_No output_")
-    
-    # Optional: show parsed JSON if available
-    if is_json and isinstance(data, dict):
-        with st.expander("Parsed JSON Structure"):
+    data, is_json = parse_brief_output(output)
+
+    if is_json:
+        md = brief_to_markdown(data)
+        st.markdown(md)
+
+        # Download as Markdown
+        st.download_button(
+            "⬇️ Download Brief (Markdown)",
+            data=md.encode("utf-8"),
+            file_name=f"{(keyword or 'content-brief').replace(' ', '-')}__{st.session_state.variant}.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
+
+        with st.expander("Parsed JSON (debug)"):
             st.json(data)
+    else:
+        # Fallback: show raw if not JSON
+        st.markdown(output or "_No output_")
 
     with st.expander("Debug / Prompt Details"):
         st.code(prompt_used, language="markdown")
@@ -390,7 +390,6 @@ if st.button("Generate Brief", type="primary") and keyword:
             user_notes=notes,
             extra={
                 "app_version": "beta-mvp",
-                "auto_flags": auto_flags,
                 "is_json": is_json,
                 "output_chars": len(output or '')
             },

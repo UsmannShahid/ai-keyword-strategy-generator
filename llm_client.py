@@ -103,12 +103,13 @@ REQUIREMENTS:
 Do not include any explanation, code blocks, or additional text.
 """.strip()
     
-    def generate_keywords_raw(self, prompt: str) -> str:
+    def generate_keywords_raw(self, prompt: str, json_mode: bool = False) -> str:
         """
         Generate keywords using the LLM and return raw response.
         
         Args:
             prompt: The prompt to send to the LLM
+            json_mode: If True, forces JSON response format
             
         Returns:
             Raw response text from the LLM
@@ -117,6 +118,10 @@ Do not include any explanation, code blocks, or additional text.
             Exception: If API call fails
         """
         try:
+            kwargs = {}
+            if json_mode:
+                kwargs["response_format"] = {"type": "json_object"}
+            
             response = self.client.chat.completions.create(
                 model=self.model,
                 temperature=self.temperature,
@@ -131,6 +136,7 @@ Do not include any explanation, code blocks, or additional text.
                         "content": prompt
                     },
                 ],
+                **kwargs
             )
             
             return response.choices[0].message.content or ""
@@ -162,6 +168,18 @@ Do not include any explanation, code blocks, or additional text.
         prompt = self.build_keyword_prompt(business_desc, industry, audience, location, prompt_template)
         return self.generate_keywords_raw(prompt)
     
+    def generate_content_brief(self, prompt: str) -> str:
+        """
+        Generate content brief using JSON mode for structured output.
+        
+        Args:
+            prompt: The prompt to send to the LLM
+            
+        Returns:
+            JSON response text from the LLM
+        """
+        return self.generate_keywords_raw(prompt, json_mode=True)
+    
     @classmethod
     def create_default(cls) -> 'KeywordLLMClient':
         """Create a client with default settings."""
@@ -188,13 +206,13 @@ Do not include any explanation, code blocks, or additional text.
             return False
 
 # Convenience functions for backward compatibility
-def get_keywords_text(prompt: str) -> str:
+def get_keywords_text(prompt: str, json_mode: bool = False) -> str:
     """
     Legacy function for backward compatibility.
     Uses default client to generate keywords.
     """
     client = KeywordLLMClient.create_default()
-    return client.generate_keywords_raw(prompt)
+    return client.generate_keywords_raw(prompt, json_mode=json_mode)
 
 def build_prompt(business_desc: str, industry: str, audience: str, location: str) -> str:
     """
