@@ -1,48 +1,43 @@
-# Testing Documentation
+# Tests Directory
 
-## Overview
-This document describes the testing setup for the AI Keyword Tool application.
+This directory contains all test files for the AI Keyword Strategy Generator, organized by test type.
 
-## Test Structure
+## Directory Structure
 
-### Test Files
-- `tests/test_app.py` - Main test suite covering all app functionality
-- `tests/__init__.py` - Package initialization
-- `pytest.ini` - pytest configuration
-- `run_tests.py` - Test runner script
+```
+tests/
+├── unit/                    # Unit tests for individual components
+│   ├── test_scoring.py      # Tests for scoring algorithms
+│   ├── test_services.py     # Tests for service layer
+│   ├── test_app.py          # Tests for main app functionality
+│   ├── test_utils.py        # Tests for utility functions
+│   ├── test_refactor.py     # Tests for refactored components
+│   └── test_color_styling.py # Tests for UI styling
+├── e2e/                     # End-to-end integration tests
+│   └── test_complete_workflow.py # Full workflow testing
+└── dev_utils/               # Development and debugging utilities
+    ├── smoke_brief_renderer.py   # Quick functionality tests
+    ├── debug_brief.py            # Debug utilities
+    └── manual_smoke_test.py      # Manual testing utilities
+```
 
-### Test Categories
+## Test Categories
 
-#### 1. Utility Functions (`TestUtilityFunctions`)
-- `test_slugify_basic()` - Tests basic string slugification
-- `test_slugify_edge_cases()` - Tests edge cases (empty strings, long strings)
-- `test_build_prompt()` - Tests prompt building with all inputs
-- `test_build_prompt_empty_fields()` - Tests prompt building with missing fields
+### Unit Tests (`tests/unit/`)
+- **test_scoring.py** - Scoring algorithms and keyword prioritization
+- **test_services.py** - Service layer functionality and API integration
+- **test_app.py** - Main application functionality and UI components  
+- **test_utils.py** - Utility functions and helpers
+- **test_refactor.py** - Refactored components and backward compatibility
+- **test_color_styling.py** - UI color coding and styling
 
-#### 2. Data Processing (`TestDataProcessing`)
-- `test_to_dataframe_valid_data()` - Tests JSON to DataFrame conversion
-- `test_to_dataframe_empty_data()` - Tests handling of empty data
-- `test_to_dataframe_partial_data()` - Tests partial data (missing categories)
-- `test_to_dataframe_none_values()` - Tests None value handling
+### End-to-End Tests (`tests/e2e/`)
+- **test_complete_workflow.py** - Full workflow integration testing
 
-#### 3. API Integration (`TestAPIIntegration`)
-- `test_get_keywords_json_success()` - Tests successful API calls (mocked)
-- `test_get_keywords_json_invalid_json()` - Tests invalid JSON response handling
-
-#### 4. Environment Setup (`TestEnvironmentSetup`)
-- `test_api_key_present()` - Tests API key loading
-- `test_api_key_missing()` - Tests missing API key handling
-
-#### 5. Streamlit Integration (`TestStreamlitIntegration`)
-- `test_ui_components_render()` - Tests UI component initialization
-
-#### 6. Data Validation (`TestDataValidation`)
-- `test_business_description_validation()` - Tests input validation
-- `test_json_structure_validation()` - Tests expected JSON structure
-
-#### 7. File Operations (`TestFileOperations`)
-- `test_csv_generation()` - Tests CSV file creation
-- `test_filename_generation()` - Tests download filename creation
+### Development Utilities (`tests/dev_utils/`)
+- **smoke_brief_renderer.py** - Quick smoke test for brief renderer
+- **debug_brief.py** - Debug utilities for content brief generation
+- **manual_smoke_test.py** - Manual testing and validation utilities
 
 ## Running Tests
 

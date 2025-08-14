@@ -49,3 +49,8 @@ Thumbs.db
 
 # Streamlit
 .streamlit/
+
+# Ignore local debug outputs
+*.log
+*.tmp
+__pycache__/
