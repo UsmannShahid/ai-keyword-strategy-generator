@@ -27,6 +27,39 @@ from parsing import parse_brief_output
 # pip install --upgrade openai
 from openai import OpenAI
 
+# --- GLOBAL UX: hero + state ---
+st.set_page_config(page_title="Keyword Quick Wins + AI Brief", page_icon="✨", layout="centered")
+
+if "ux_step" not in st.session_state:
+    st.session_state.ux_step = 1  # 1: Inputs, 2: Keywords, 3: Brief
+if "selected_keyword" not in st.session_state:
+    st.session_state.selected_keyword = None
+if "variant" not in st.session_state:
+    st.session_state.variant = "A"
+
+st.markdown("""
+### ✨ Quick‑Win Keyword Finder + AI Content Brief
+Find low‑competition, high‑intent keywords fast — then generate a clean, writer‑ready brief in one click.
+""")
+
+def step_header():
+    s = st.session_state.ux_step
+    steps = [
+        ("1️⃣ Inputs", 1),
+        ("2️⃣ Keywords", 2),
+        ("3️⃣ Content Brief", 3),
+    ]
+    cols = st.columns(len(steps))
+    for i, (label, num) in enumerate(steps):
+        with cols[i]:
+            if s == num:
+                st.markdown(f"**{label}**")
+            elif s > num:
+                st.markdown(f"✅ {label}")
+            else:
+                st.markdown(f"⬜ {label}")
+    st.divider()
+
 # Custom CSS for better reading width and spacing
 st.markdown("""
 <style>
@@ -155,267 +188,327 @@ def to_dataframe(data: dict) -> pd.DataFrame:
             rows.append({"keyword": kw, "category": category})
     return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["keyword", "category"])
 
-# ------------- UI: Inputs ------------------------
-business_desc = st.text_input("Describe your website or business:")
+# ------------- STEP RENDERERS ------------------------
 
-# Prompt strategy toggle
-st.markdown("#### 🎯 Keyword Strategy")
-prompt_options = prompt_manager.get_prompt_display_names()
-available_prompts = list(prompt_options.keys())
-
-if available_prompts:
-    selected_prompt_display = st.selectbox(
-        "Choose your keyword research approach:",
-        options=[prompt_options[key] for key in available_prompts],
-        index=0
-    )
-    # Get the actual prompt key from the display name
-    selected_prompt = next(key for key, display in prompt_options.items() if display == selected_prompt_display)
-else:
-    selected_prompt = "default_seo"
-    st.info("💡 Using default SEO strategy (prompt files not found)")
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    industry = st.text_input("Industry (e.g., skincare, SaaS, fitness)", "")
-with col2:
-    audience = st.text_input("Target audience (e.g., beginners, SMBs)", "")
-with col3:
-    location = st.text_input("Location/Market (e.g., US, UK, Toronto)", "")
-
-# ------------- Action: Generate ------------------
-if st.button("Generate Keywords"):
-    # Basic validation (prevents empty requests)
-    if not business_desc.strip():
-        st.warning("Please describe your business to generate keywords.")
-        st.stop()
-
-    with st.spinner("Generating keywords..."):
-        try:
-            # Use the new service to generate keywords with selected prompt
-            data = st.session_state.keyword_service.generate_keywords(
-                business_desc=business_desc,
-                industry=industry,
-                audience=audience,
-                location=location,
-                prompt_template=selected_prompt
-            )
-
-            # 2) Build table from parsed data
-            df = to_dataframe(data)
-            
-            # Add scoring and priority
-            df = add_scores(df, intent_col="category", kw_col="keyword")
-
-            if df.empty:
-                st.info("No keywords returned. Try broadening your description or removing constraints.")
-            else:
-                st.success(f"Generated {len(df)} keywords.")
-                st.markdown("""
-### 🗂️ Categorized Keywords
-**Opportunity** <span title="A 0–100 estimate of keyword potential based on intent, specificity, commercial terms, and estimated competition.">ℹ️</span>
-""", unsafe_allow_html=True)
-                df = df.sort_values(["priority"]).reset_index(drop=True)
-                styled = (
-                    df[["priority","keyword","category","opportunity"]]
-                      .style.apply(style_intent, subset=["category"])
-                )
-                st.dataframe(styled, use_container_width=True)
-
-                # Quick wins section
-                top_n = 15
-                quick_wins = df.sort_values(["opportunity","keyword"], ascending=[False, True]).head(top_n)
-
-                with st.expander(f"⚡ Quick Wins (Top {top_n} by Opportunity)", expanded=True):
-                    st.caption(f"{len(quick_wins)} suggestions shown")
-                    quick_wins_styled = (
-                        quick_wins[["priority","keyword","category","opportunity"]]
-                          .style.apply(style_intent, subset=["category"])
-                    )
-                    st.dataframe(quick_wins_styled, use_container_width=True)
-                    # Optional: title ideas via simple template (LLM-based later)
-                    st.markdown("#### Suggested Titles")
-                    for _, row in quick_wins.iterrows():
-                        if row["category"] == "transactional":
-                            idea = f"Best {row['keyword'].title()} in {location or '2025'}: Pricing, Pros & Cons"
-                        else:
-                            idea = f"How to Choose {row['keyword'].title()} ({location or '2025'} Guide)"
-                        st.markdown(f"- {idea}")
-                    
-                    # Quick Wins copy functionality
-                    copy_pairs = st.toggle("Copy Quick Wins as CSV (keyword,category)", value=False)
-                    render_copy_from_dataframe(
-                        df.sort_values("priority").head(15),
-                        include_category=copy_pairs,
-                        delimiter="\n",
-                        label="Copy Quick Wins"
-                    )
-
-                # 3) Copy options with toggle for format
-                copy_pairs = st.toggle("Copy as CSV (keyword,category)", value=False)
-                render_copy_from_dataframe(
-                    df,
-                    column="keyword",
-                    delimiter="\n",
-                    label="Copy keyword list" if not copy_pairs else "Copy as CSV pairs",
-                    include_category=copy_pairs
-                )
-
-                # Brief generation placeholder
-                selected = st.multiselect(
-                    "Select keywords to generate briefs",
-                    options=df["keyword"].tolist(),
-                    max_selections=10
-                )
-                st.button("Generate Briefs (coming soon)", disabled=not selected)
-
-                # 4) Report name input -> nice CSV filename (slugified)
-                report_name = st.text_input(
-                    "Report name",
-                    value=default_report_name(business_desc),
-                    help="Used to name the CSV file you download."
-                )
-                if not report_name.strip():
-                    st.warning("Report name is empty. A generic name will be used.")
-                csv_bytes = df.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    "⬇️ Download CSV",
-                    data=csv_bytes,
-                    file_name=f"{slugify(report_name)}.csv",
-                    mime="text/csv",
-                )
-
-                # 5) Quick markdown by category (nice for copy-paste)
-                st.markdown("### Quick View (by category)")
-                for cat in ("informational", "transactional", "branded"):
-                    kws = (data.get(cat) or []) if isinstance(data, dict) else []
-                    if kws:
-                        st.markdown(f"**{cat.title()}**")
-                        st.markdown("- " + "\n- ".join(map(str, kws)))
-
-                # 6) Save lightweight run history (for the sidebar)
-                today = datetime.now().strftime("%Y-%m-%d")
-                st.session_state.history.append({
-                    "business": business_desc,
-                    "industry": industry,
-                    "audience": audience,
-                    "location": location,
-                    "count": len(df),
-                    "ts": today,
-                })
-
-        except json.JSONDecodeError:
-            # Kept for backward-compat if you still call a JSON-returning helper elsewhere.
-            st.error("The model returned invalid JSON. Please try again or simplify inputs.")
-        except Exception as e:
-            # Network issues / API errors / key problems
-            st.error(f"Error generating keywords: {e}")
-            st.info("Check your OpenAI API key, internet connection, or try again in a minute.")
-
-# ------------- Content Brief Generator with A/B Testing -----------
-st.markdown("---")
-st.markdown("## 📝 AI Content Brief Generator")
-
-# --- Persisted variant selection ---
-if "variant" not in st.session_state:
-    # Default to first available
-    st.session_state.variant = (prompt_manager.get_variants("content_brief") or ["A"])[0]
-
-variants = prompt_manager.get_variants("content_brief")
-st.session_state.variant = st.selectbox(
-    "Prompt Variant (A/B)",
-    variants if variants else ["A"],
-    index=(variants.index(st.session_state.variant) if variants and st.session_state.variant in variants else 0)
-)
-
-# --- Inputs ---
-keyword = st.text_input("Enter keyword", placeholder="e.g., best ergonomic chair for home office")
-
-# --- Action ---
-if st.button("Generate Brief", type="primary") and keyword:
-    with st.spinner("Generating brief..."):
-        output, prompt_used, latency_ms, usage = generate_brief_with_variant(
-            keyword=keyword,
-            variant=st.session_state.variant,
+def render_step_1():
+    st.subheader("Step 1 — Tell us your niche")
+    
+    # Business description input
+    business_desc = st.text_input("Describe your website or business:", 
+                                  value=st.session_state.get("business_desc", ""),
+                                  placeholder="e.g., ergonomic office chairs for remote workers")
+    
+    # Additional context inputs
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        industry = st.text_input("Industry (optional)", 
+                                value=st.session_state.get("industry", ""),
+                                placeholder="e.g., furniture, SaaS")
+    with col2:
+        audience = st.text_input("Target audience (optional)", 
+                                value=st.session_state.get("audience", ""),
+                                placeholder="e.g., remote workers")
+    with col3:
+        location = st.text_input("Location/Market (optional)", 
+                                value=st.session_state.get("location", ""),
+                                placeholder="e.g., US, Canada")
+    
+    # Prompt strategy selection
+    st.markdown("#### 🎯 Keyword Strategy")
+    prompt_options = prompt_manager.get_prompt_display_names()
+    available_prompts = list(prompt_options.keys())
+    
+    if available_prompts:
+        selected_prompt_display = st.selectbox(
+            "Choose your keyword research approach:",
+            options=[prompt_options[key] for key in available_prompts],
+            index=0
         )
-
-    # --- Render result (modern brief) ---
-    st.subheader("AI Content Brief")
-
-    data, is_json = parse_brief_output(output)
-
-    if is_json:
-        md = brief_to_markdown(data)
-        st.markdown(md)
-
-        # Download as Markdown
-        st.download_button(
-            "⬇️ Download Brief (Markdown)",
-            data=md.encode("utf-8"),
-            file_name=f"{(keyword or 'content-brief').replace(' ', '-')}__{st.session_state.variant}.md",
-            mime="text/markdown",
-            use_container_width=True,
-        )
-
-        with st.expander("Parsed JSON (debug)"):
-            st.json(data)
+        # Get the actual prompt key from the display name
+        selected_prompt = next(key for key, display in prompt_options.items() if display == selected_prompt_display)
     else:
-        # Fallback: show raw if not JSON
-        st.markdown(output or "_No output_")
+        selected_prompt = "default_seo"
+        st.info("💡 Using default SEO strategy (prompt files not found)")
+    
+    # Save inputs to session state
+    st.session_state.business_desc = business_desc
+    st.session_state.industry = industry
+    st.session_state.audience = audience
+    st.session_state.location = location
+    st.session_state.selected_prompt = selected_prompt
+    
+    st.caption("💡 Tip: The more specific your description, the better the keyword suggestions.")
+    
+    st.divider()
+    disabled = not bool(business_desc.strip())
+    if st.button("Next: Find Keywords →", type="primary", disabled=disabled):
+        st.session_state.ux_step = 2
+        st.rerun()
 
-    with st.expander("Debug / Prompt Details"):
-        st.code(prompt_used, language="markdown")
-        if usage:
-            st.json(usage)
-        st.caption(f"Latency: {latency_ms:.0f} ms")
-
-    # --- Feedback & Logging ---
-    st.markdown("---")
-    st.subheader("How good was this brief?")
-    rating = st.slider("Rating (1=poor, 5=excellent)", min_value=1, max_value=5, value=4)
-    notes = st.text_area("Optional notes (what was good/bad, missing headings, etc.)")
-
-    if st.button("Save outcome"):
-        tokens_prompt = usage.get("prompt_tokens") if usage else None
-        tokens_completion = usage.get("completion_tokens") if usage else None
-        log_eval(
-            variant=st.session_state.variant,
-            keyword=keyword,
-            prompt=prompt_used,
-            output=output,
-            latency_ms=latency_ms,
-            tokens_prompt=tokens_prompt,
-            tokens_completion=tokens_completion,
-            user_rating=rating,
-            user_notes=notes,
-            extra={
-                "app_version": "beta-mvp",
-                "is_json": is_json,
-                "output_chars": len(output or '')
-            },
+def render_step_2():
+    st.subheader("Step 2 — Quick‑Win Keywords")
+    
+    # Show the business context
+    business_desc = st.session_state.get("business_desc", "")
+    st.info(f"🎯 **Finding keywords for:** {business_desc}")
+    
+    # Generate keywords if not already done or if inputs changed
+    if "generated_df" not in st.session_state or st.button("🔄 Regenerate Keywords"):
+        with st.spinner("Generating keywords..."):
+            try:
+                # Use the keyword service to generate keywords
+                data = st.session_state.keyword_service.generate_keywords(
+                    business_desc=st.session_state.get("business_desc", ""),
+                    industry=st.session_state.get("industry", ""),
+                    audience=st.session_state.get("audience", ""),
+                    location=st.session_state.get("location", ""),
+                    prompt_template=st.session_state.get("selected_prompt", "default_seo")
+                )
+                
+                # Build table from parsed data
+                df = to_dataframe(data)
+                
+                # Add scoring and priority
+                df = add_scores(df, intent_col="category", kw_col="keyword")
+                
+                if not df.empty:
+                    df = df.sort_values(["priority"]).reset_index(drop=True)
+                    st.session_state.generated_df = df
+                    st.success(f"Generated {len(df)} keywords!")
+                    
+                    # Save to history for sidebar
+                    if "history" not in st.session_state:
+                        st.session_state.history = []
+                    today = datetime.now().strftime("%Y-%m-%d")
+                    st.session_state.history.append({
+                        "business": st.session_state.get("business_desc", ""),
+                        "industry": st.session_state.get("industry", ""),
+                        "audience": st.session_state.get("audience", ""),
+                        "location": st.session_state.get("location", ""),
+                        "count": len(df),
+                        "ts": today,
+                    })
+                else:
+                    st.warning("No keywords generated. Try adjusting your description.")
+                    return
+                    
+            except Exception as e:
+                st.error(f"Error generating keywords: {e}")
+                return
+    
+    # Display keywords table
+    if "generated_df" in st.session_state:
+        df = st.session_state.generated_df
+        
+        st.markdown("### 🗂️ Generated Keywords")
+        styled = (
+            df[["priority","keyword","category","opportunity"]]
+              .style.apply(style_intent, subset=["category"])
         )
-        st.success("Saved! This run is now logged for A/B analysis.")
+        st.dataframe(styled, use_container_width=True)
+        
+        # Quick wins section
+        top_n = 10
+        quick_wins = df.sort_values(["opportunity","keyword"], ascending=[False, True]).head(top_n)
+        
+        with st.expander(f"⚡ Top {top_n} Quick Wins", expanded=True):
+            quick_wins_styled = (
+                quick_wins[["priority","keyword","category","opportunity"]]
+                  .style.apply(style_intent, subset=["category"])
+            )
+            st.dataframe(quick_wins_styled, use_container_width=True)
+        
+        # Keyword selection for brief generation
+        st.markdown("### 📝 Select a keyword for content brief")
+        selected_keyword = st.selectbox(
+            "Choose a keyword to generate a content brief:",
+            options=[""] + df["keyword"].tolist(),
+            index=0,
+            placeholder="Select a keyword..."
+        )
+        
+        if selected_keyword:
+            st.session_state.selected_keyword = selected_keyword
+            st.success(f"✅ Selected: **{selected_keyword}**")
+    
+    # Navigation buttons
+    st.divider()
+    col1, col2 = st.columns([1,1])
+    with col1:
+        if st.button("← Back to Inputs"):
+            st.session_state.ux_step = 1
+            st.rerun()
+    with col2:
+        disabled = not st.session_state.get("selected_keyword")
+        if st.button("Next: Generate Brief →", type="primary", disabled=disabled):
+            st.session_state.ux_step = 3
+            st.rerun()
 
-# ------------- Sidebar: Help + History -----------
+def render_step_3():
+    st.subheader("Step 3 — AI Content Brief")
+    
+    keyword = st.session_state.get("selected_keyword")
+    if not keyword:
+        st.error("No keyword selected. Please go back to Step 2.")
+        return
+    
+    st.info(f"📝 **Generating brief for:** {keyword}")
+    
+    # Variant picker (contextual to this step)
+    variants = prompt_manager.get_variants("content_brief") or ["A","B"]
+    st.session_state.variant = st.selectbox(
+        "Prompt Variant (A/B Testing)", 
+        variants, 
+        index=variants.index(st.session_state.variant) if st.session_state.variant in variants else 0,
+        help="Different prompt strategies for content brief generation"
+    )
+    
+    # Display selected keyword (read-only)
+    st.text_input("Selected Keyword", value=keyword, disabled=True)
+    
+    # Generate brief button
+    if st.button("🚀 Generate Content Brief", type="primary"):
+        with st.spinner("Generating content brief..."):
+            try:
+                output, prompt_used, latency_ms, usage = generate_brief_with_variant(
+                    keyword=keyword,
+                    variant=st.session_state.variant
+                )
+                
+                # Store results in session state
+                st.session_state.brief_output = output
+                st.session_state.brief_prompt = prompt_used
+                st.session_state.brief_latency = latency_ms
+                st.session_state.brief_usage = usage
+                
+            except Exception as e:
+                st.error(f"Error generating brief: {e}")
+                return
+    
+    # Display generated brief
+    if "brief_output" in st.session_state:
+        output = st.session_state.brief_output
+        data, is_json = parse_brief_output(output)
+        
+        st.markdown("---")
+        st.markdown("### 📋 Generated Content Brief")
+        
+        if is_json:
+            md = brief_to_markdown(data)
+            st.markdown(md)
+            
+            # Download button
+            st.download_button(
+                "⬇️ Download Brief (Markdown)",
+                data=md.encode("utf-8"),
+                file_name=f"{keyword.replace(' ', '-')}__{st.session_state.variant}.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
+            
+            # Debug info
+            with st.expander("🔧 Debug Info"):
+                st.json(data)
+                if "brief_prompt" in st.session_state:
+                    st.markdown("**Prompt Used:**")
+                    st.code(st.session_state.brief_prompt, language="markdown")
+                if "brief_latency" in st.session_state:
+                    st.caption(f"⏱️ Generated in {st.session_state.brief_latency:.0f}ms")
+        else:
+            st.warning("⚠️ Model returned non-JSON output. Showing raw:")
+            st.markdown(output or "_No output_")
+        
+        # Feedback section
+        st.markdown("---")
+        st.markdown("### 💭 How was this brief?")
+        rating = st.slider("Rating (1=poor, 5=excellent)", min_value=1, max_value=5, value=4)
+        notes = st.text_area("Optional feedback (what was good/bad?)", placeholder="e.g., missing competitor analysis, great structure...")
+        
+        if st.button("💾 Save Feedback"):
+            log_eval(
+                variant=st.session_state.variant,
+                keyword=keyword,
+                prompt=st.session_state.get("brief_prompt", ""),
+                output=output,
+                latency_ms=st.session_state.get("brief_latency", 0),
+                tokens_prompt=st.session_state.get("brief_usage", {}).get("prompt_tokens") if st.session_state.get("brief_usage") else None,
+                tokens_completion=st.session_state.get("brief_usage", {}).get("completion_tokens") if st.session_state.get("brief_usage") else None,
+                user_rating=rating,
+                user_notes=notes,
+                extra={
+                    "app_version": "wizard-v1",
+                    "is_json": is_json,
+                    "output_chars": len(output or '')
+                },
+            )
+            st.success("✅ Feedback saved! This helps improve the AI prompts.")
+    
+    # Navigation buttons
+    st.divider()
+    col1, col2 = st.columns([1,1])
+    with col1:
+        if st.button("← Back to Keywords"):
+            st.session_state.ux_step = 2
+            st.rerun()
+    with col2:
+        if st.button("🔄 Start Over"):
+            # Reset session state
+            for key in ["ux_step", "selected_keyword", "generated_df", "brief_output", "brief_prompt", "brief_latency", "brief_usage"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.session_state.ux_step = 1
+            st.rerun()
+
+# ------------- MAIN WIZARD FLOW ------------------------
+
+# Display step header
+step_header()
+
+# Render current step
+if st.session_state.ux_step == 1:
+    render_step_1()
+elif st.session_state.ux_step == 2:
+    render_step_2()
+elif st.session_state.ux_step == 3:
+    render_step_3()
+
+# ------------- Sidebar: Help + Navigation -----------
+st.sidebar.title("📊 Quick Navigation")
+
+# Quick navigation to Compare Runs page
+try:
+    st.sidebar.page_link("pages/2_📊_Compare_Runs.py", label="📊 Compare A/B Results")
+except Exception:
+    # Fallback for older Streamlit versions
+    pass
+
 st.sidebar.title("How to Use")
 st.sidebar.markdown("""
-1. Describe your business (be specific).
-2. Optionally add industry, audience, and location.
-3. Click **Generate Keywords**.
-4. Review, copy, or download as CSV.
+**Step 1:** Describe your business and target market  
+**Step 2:** Review generated keywords and pick one  
+**Step 3:** Generate a comprehensive content brief  
 
-**Tip:** The more specific the description, the better the keywords.
+💡 **Tip:** Be specific in your business description for better keywords.
 """)
 
-st.sidebar.title("Recent Runs (session)")
+# Keep a simple in-memory history for this session
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+st.sidebar.title("Recent Sessions")
 if st.session_state.history:
-    for item in st.session_state.history[-5:][::-1]:
+    for item in st.session_state.history[-3:][::-1]:
         st.sidebar.write(
-            f"- **{item['business'][:30]}** · {item['count']} kws · {item['ts']}"
+            f"- **{item['business'][:25]}...** · {item['count']} kws"
         )
+else:
+    st.sidebar.caption("No sessions yet")
 
 st.sidebar.title("About")
 st.sidebar.markdown("""
-This tool uses OpenAI to generate SEO-friendly keyword ideas grouped by intent,
-based on your business context. Built with Streamlit + Python.
+🎯 **AI Keyword Strategy Tool**  
+Find high-opportunity keywords and generate writer-ready content briefs.
+
+Built with Streamlit + OpenAI GPT-4o-mini
 """)
+
