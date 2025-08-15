@@ -13,7 +13,7 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from ui_helpers import render_copy_from_dataframe
-from services import KeywordService, generate_brief_with_variant
+from services import KeywordService, generate_brief_with_variant, fetch_serp_snapshot
 from parsing import SAFE_OUTPUT, parse_brief_output, detect_placeholders
 from utils import slugify, default_report_name
 from prompt_manager import prompt_manager
@@ -21,6 +21,7 @@ from scoring import add_scores
 from eval_logger import log_eval
 from brief_renderer import brief_to_markdown
 from parsing import parse_brief_output
+from serp_utils import analyze_serp
 
 
 # OpenAI SDK (current usage style)
@@ -268,6 +269,8 @@ section.main .block-container { max-width: 980px; }
 .k-badge--buy { background:#e6ffed; color:#09633b; }
 .k-badge--info { background:#eef2ff; color:#3730a3; }
 .k-badge--brand { background:#fef3c7; color:#92400e; }
+.k-badge--weak { background:#fee2e2; color:#dc2626; }
+.k-badge--strong { background:#d1fae5; color:#059669; }
 /* step chips */
 .stepper { display:flex; gap:.5rem; margin:.5rem 0 1rem; }
 .step { padding:.35rem .6rem; border-radius:999px; font-weight:600; 
@@ -685,6 +688,50 @@ def render_step_3():
     # Display selected keyword (read-only)
     st.text_input("Selected Keyword", value=keyword, disabled=True)
     
+    # SERP Snapshot section
+    show_serp = st.checkbox("📊 Show SERP snapshot (competitor analysis)", value=True)
+    st.session_state.show_serp = show_serp  # Store for logging
+    if show_serp:
+        with st.spinner("Analyzing top competitors..."):
+            # Fetch SERP data
+            country = st.session_state.get("country", "US")
+            language = st.session_state.get("language", "en")
+            results = fetch_serp_snapshot(keyword, country, language)
+            serp_analysis = analyze_serp(results)
+            
+            # Store SERP data in session state for logging
+            st.session_state.serp_data = serp_analysis
+            
+            if serp_analysis and serp_analysis["rows"]:
+                st.markdown("### 🔍 Top 5 Competitors")
+                for i, row in enumerate(serp_analysis["rows"], 1):
+                    col1, col2 = st.columns([4, 1])
+                    with col1:
+                        domain = row.get("domain", "N/A")
+                        title = row.get("title", "No title")[:60] + "..." if len(row.get("title", "")) > 60 else row.get("title", "No title")
+                        st.markdown(f"**{i}. {domain}**  \n{title}")
+                    with col2:
+                        if row.get("weak_any"):
+                            weak_types = []
+                            if row.get("weak_forum"): weak_types.append("Forum")
+                            if row.get("weak_thin"): weak_types.append("Thin")
+                            if row.get("weak_old"): weak_types.append("Old")
+                            st.markdown(f'<span class="k-badge k-badge--weak">{"·".join(weak_types)}</span>', unsafe_allow_html=True)
+                        else:
+                            st.markdown('<span class="k-badge k-badge--strong">Strong</span>', unsafe_allow_html=True)
+                
+                # Summary stats
+                s = serp_analysis["summary"]
+                if s["weak_any"] > 0:
+                    st.success(f"🎯 **Opportunity detected**: {s['weak_any']}/{s['total']} results show weaknesses (forums: {s['weak_forum']}, thin: {s['weak_thin']}, old: {s['weak_old']})")
+                else:
+                    st.warning("⚠️ **Competitive keyword**: All top results appear strong. Consider long-tail variations.")
+            else:
+                st.info("📊 SERP data not available. Enable your SERP API to see competitor analysis.")
+                st.session_state.serp_data = None
+    else:
+        st.session_state.serp_data = None
+
     # Generate brief button
     if st.button("🚀 Generate Content Brief", type="primary"):
         with st.spinner("Generating content brief..."):
@@ -755,9 +802,9 @@ def render_step_3():
                 user_rating=rating,
                 user_notes=notes,
                 extra={
-                    "app_version": "wizard-v1",
-                    "is_json": is_json,
-                    "output_chars": len(output or '')
+                    "app_version": "beta-mvp",
+                    "checklist": None,  # TODO: Implement quality checklist
+                    "serp_summary": st.session_state.get("serp_data", {}).get("summary") if st.session_state.get("show_serp") and keyword else None
                 },
             )
             st.success("✅ Feedback saved! This helps improve the AI prompts.")

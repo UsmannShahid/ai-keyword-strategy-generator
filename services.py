@@ -185,3 +185,18 @@ def generate_brief_with_variant(
         output, usage = str(result), None
 
     return output, prompt, latency_ms, usage
+
+
+# ------------- SERP Snapshot Utilities ------------------------
+
+from typing import List, Dict, Any
+
+def fetch_serp_snapshot(keyword: str, country: str = "US", language: str = "en") -> List[Dict[str, Any]]:
+    """
+    Return top results with at least: title, url, snippet.
+    Replace the stub with your actual SERP client call.
+    """
+    # TODO: plug in your real SERP provider here:
+    # results = serp_client.search(q=keyword, gl=country, hl=language, num=5)
+    # return [{"title": r.title, "url": r.link, "snippet": r.snippet} for r in results]
+    return []  # safe default until wired
