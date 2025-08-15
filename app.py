@@ -37,6 +37,23 @@ if "selected_keyword" not in st.session_state:
 if "variant" not in st.session_state:
     st.session_state.variant = "A"
 
+# Helper functions for navigation
+def _go(step: int):
+    st.session_state.ux_step = step
+
+def _on_keyword_pick():
+    pick = st.session_state.get("kw_pick_select")
+    if pick:
+        st.session_state.selected_keyword = pick
+        _go(3)
+        st.toast(f"Keyword selected: {pick}")
+        st.rerun()
+
+# SVG Icons
+ICON_BRIEF = """<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"
+  xmlns="http://www.w3.org/2000/svg" style="vertical-align:-2px;">
+  <path d="M8 4h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM8 6v12h8V6H8zm2 2h4v1H10V8zm0 3h4v1H10v-1zm0 3h2v1H10v-1z"/></svg>"""
+
 st.markdown("""
 ### ✨ Quick‑Win Keyword Finder + AI Content Brief
 Find low‑competition, high‑intent keywords fast — then generate a clean, writer‑ready brief in one click.
@@ -45,26 +62,35 @@ Find low‑competition, high‑intent keywords fast — then generate a clean, w
 def step_header():
     s = st.session_state.ux_step
     steps = [
-        ("1️⃣ Inputs", 1),
-        ("2️⃣ Keywords", 2),
-        ("3️⃣ Content Brief", 3),
+        ("🧭", "Inputs", 1),
+        ("🔎", "Keywords", 2),
+        ("📝", "Content Brief", 3),
     ]
-    cols = st.columns(len(steps))
-    for i, (label, num) in enumerate(steps):
-        with cols[i]:
-            if s == num:
-                st.markdown(f"**{label}**")
-            elif s > num:
-                st.markdown(f"✅ {label}")
-            else:
-                st.markdown(f"⬜ {label}")
+    html = ['<div class="stepper">']
+    for icon, label, num in steps:
+        cls = "step"
+        if s == num: cls += " step--active"
+        elif s > num: cls += " step--done"
+        html.append(f'<span class="{cls}"><span class="step__icon">{icon}</span>{label}</span>')
+    html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
     st.divider()
 
 # Custom CSS for better reading width and spacing
 st.markdown("""
 <style>
-section.main .block-container { max-width: 900px; }
-h2, h3 { margin-top: 1.1rem !important; }
+section.main .block-container { max-width: 980px; }
+.k-badge { display:inline-block; padding:2px 8px; border-radius:16px; font-weight:600; font-size:12px; }
+.k-badge--buy { background:#e6ffed; color:#09633b; }
+.k-badge--info { background:#eef2ff; color:#3730a3; }
+.k-badge--brand { background:#fef3c7; color:#92400e; }
+/* step chips */
+.stepper { display:flex; gap:.5rem; margin:.5rem 0 1rem; }
+.step { padding:.35rem .6rem; border-radius:999px; font-weight:600; 
+        background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); }
+.step--active { background:rgba(59,130,246,.15); border-color:rgba(59,130,246,.35); color:#93c5fd; }
+.step--done { background:rgba(16,185,129,.15); border-color:rgba(16,185,129,.35); color:#6ee7b7; }
+.step__icon { margin-right:.35rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -78,6 +104,11 @@ INTENT_COLORS = {
 
 def style_intent(s: pd.Series):
     return [f"background-color: {INTENT_COLORS.get(v.lower(), '#f3f4f6')}" for v in s]
+
+def render_intent_badge(intent: str) -> str:
+    """Render an intent badge using CSS classes"""
+    cls = "k-badge--buy" if "trans" in intent.lower() or "buyer" in intent.lower() else ("k-badge--info" if "info" in intent.lower() else "k-badge--brand")
+    return f'<span class="k-badge {cls}">{intent}</span>'
 
 # ------------- One-time Setup --------------------
 load_dotenv()  # Load environment variables from .env
@@ -191,7 +222,7 @@ def to_dataframe(data: dict) -> pd.DataFrame:
 # ------------- STEP RENDERERS ------------------------
 
 def render_step_1():
-    st.subheader("Step 1 — Tell us your niche")
+    st.subheader("🧭 Step 1 — Tell us your niche")
     
     # Business description input
     business_desc = st.text_input("Describe your website or business:", 
@@ -246,7 +277,7 @@ def render_step_1():
         st.rerun()
 
 def render_step_2():
-    st.subheader("Step 2 — Quick‑Win Keywords")
+    st.subheader("🔎 Step 2 — Quick‑Win Keywords")
     
     # Show the business context
     business_desc = st.session_state.get("business_desc", "")
@@ -268,8 +299,15 @@ def render_step_2():
                 # Build table from parsed data
                 df = to_dataframe(data)
                 
-                # Add scoring and priority
+                # Add scoring and priority - rename columns to match expected format
                 df = add_scores(df, intent_col="category", kw_col="keyword")
+                df = df.rename(columns={
+                    "keyword": "Keyword",
+                    "category": "Intent", 
+                    "opportunity": "QW Score"
+                })
+                # Add Volume column (placeholder for now)
+                df["Volume"] = pd.Series([1000, 800, 600, 400, 300] * (len(df) // 5 + 1))[:len(df)]
                 
                 if not df.empty:
                     df = df.sort_values(["priority"]).reset_index(drop=True)
@@ -296,40 +334,122 @@ def render_step_2():
                 st.error(f"Error generating keywords: {e}")
                 return
     
-    # Display keywords table
+    # Display keywords table with enhanced styling and filters
     if "generated_df" in st.session_state:
         df = st.session_state.generated_df
         
-        st.markdown("### 🗂️ Generated Keywords")
-        styled = (
-            df[["priority","keyword","category","opportunity"]]
-              .style.apply(style_intent, subset=["category"])
+        if df is None or df.empty:
+            st.info("No keywords found. Try regenerating or going back to adjust inputs.")
+            st.button("← Back", on_click=lambda: setattr(st.session_state, "ux_step", 1))
+            return
+
+        # Normalize types
+        df = df.copy()
+        if "QW Score" in df.columns:
+            df["QW Score"] = pd.to_numeric(df["QW Score"], errors="coerce").fillna(0).clip(0,100)
+        if "Volume" in df.columns:
+            df["Volume"] = pd.to_numeric(df["Volume"], errors="coerce").fillna(0).astype(int)
+
+        # Quick filters
+        with st.expander("🔍 Filters", expanded=True):
+            c1, c2, c3 = st.columns([1,1,1])
+            min_score = c1.slider("Min Quick‑Win score", 0, 100, 60)
+            include = c2.text_input("Include terms", value="", placeholder="comma‑separated (optional)")
+            exclude = c3.text_input("Exclude terms", value="", placeholder="comma‑separated (optional)")
+
+        filt = (df["QW Score"] >= min_score)
+        if include.strip():
+            inc_terms = [t.strip().lower() for t in include.split(",") if t.strip()]
+            for t in inc_terms:
+                filt &= df["Keyword"].str.lower().str.contains(t, na=False)
+        if exclude.strip():
+            exc_terms = [t.strip().lower() for t in exclude.split(",") if t.strip()]
+            for t in exc_terms:
+                filt &= ~df["Keyword"].str.lower().str.contains(t, na=False)
+        fdf = df.loc[filt].reset_index(drop=True)
+
+        if fdf.empty:
+            st.warning("No rows after filters.")
+            st.button("← Back", on_click=lambda: setattr(st.session_state, "ux_step", 1))
+            return
+
+        # ---- Enhanced Styler: color QW Score, volume bars, intent badges ----
+        def style_df(_df: pd.DataFrame):
+            sty = _df.style
+
+            # Simple color coding for score (without matplotlib dependency)
+            if "QW Score" in _df.columns:
+                def score_color(val):
+                    try:
+                        score = float(val)
+                        if score >= 80:
+                            return "background-color:#dcfce7;color:#166534"  # green
+                        elif score >= 60:
+                            return "background-color:#fef3c7;color:#92400e"  # yellow
+                        else:
+                            return "background-color:#fee2e2;color:#991b1b"  # red
+                    except:
+                        return ""
+                sty = sty.map(score_color, subset=["QW Score"])
+
+            # intent pill look via CSS
+            if "Intent" in _df.columns:
+                def intent_color(val):
+                    v = str(val).lower()
+                    if "transaction" in v or "buyer" in v:
+                        return "background-color:#e6ffed;color:#09633b;border-radius:16px;padding:2px 8px; font-weight:600"
+                    if "inform" in v:
+                        return "background-color:#eef2ff;color:#3730a3;border-radius:16px;padding:2px 8px; font-weight:600"
+                    if "navig" in v or "branded" in v:
+                        return "background-color:#fef3c7;color:#92400e;border-radius:16px;padding:2px 8px; font-weight:600"
+                    return ""
+                sty = sty.map(intent_color, subset=["Intent"])
+            return sty
+
+        # Display the styled dataframe
+        show_cols = [c for c in ["Keyword","QW Score","Intent","Volume","Notes"] if c in fdf.columns]
+        st.markdown("### 📊 Keyword Results")
+        st.dataframe(
+            style_df(fdf[show_cols]), 
+            use_container_width=True, 
+            height=min(600, 48 + 33*min(len(fdf), 12))
         )
-        st.dataframe(styled, use_container_width=True)
         
         # Quick wins section
-        top_n = 10
-        quick_wins = df.sort_values(["opportunity","keyword"], ascending=[False, True]).head(top_n)
+        top_n = 5
+        quick_wins = fdf.sort_values(["QW Score"], ascending=False).head(top_n)
         
         with st.expander(f"⚡ Top {top_n} Quick Wins", expanded=True):
-            quick_wins_styled = (
-                quick_wins[["priority","keyword","category","opportunity"]]
-                  .style.apply(style_intent, subset=["category"])
-            )
-            st.dataframe(quick_wins_styled, use_container_width=True)
-        
-        # Keyword selection for brief generation
-        st.markdown("### 📝 Select a keyword for content brief")
-        selected_keyword = st.selectbox(
-            "Choose a keyword to generate a content brief:",
-            options=[""] + df["keyword"].tolist(),
+            st.caption(f"Highest scoring keywords for immediate content opportunities")
+            
+            for idx, row in quick_wins.iterrows():
+                col1, col2, col3 = st.columns([3, 1, 1])
+                with col1:
+                    intent_badge = render_intent_badge(row['Intent'])
+                    st.markdown(f"**{row['Keyword']}** {intent_badge}", unsafe_allow_html=True)
+                    st.caption(f"Volume: {row.get('Volume', 'N/A')} | Score: {row['QW Score']:.0f}")
+                with col2:
+                    pass  # spacing
+                with col3:
+                    if st.button(f"📝 Brief This", key=f"brief_{idx}_{row['Keyword'][:20]}"):
+                        st.session_state.selected_keyword = row['Keyword'] 
+                        st.session_state.ux_step = 3
+                        st.rerun()
+
+        # Selection control (alternative method)
+        st.markdown("#### Pick a keyword to brief")
+        pick = st.selectbox(
+            "Keyword",
+            options=fdf["Keyword"].tolist(),
             index=0,
-            placeholder="Select a keyword..."
+            key="kw_pick_select",
+            label_visibility="collapsed",
+            on_change=_on_keyword_pick,   # ⬅️ auto-advance
         )
-        
-        if selected_keyword:
-            st.session_state.selected_keyword = selected_keyword
-            st.success(f"✅ Selected: **{selected_keyword}**")
+
+        # Show current selection status
+        if pick:
+            st.success(f"✅ Selected: **{pick}**")
     
     # Navigation buttons
     st.divider()
@@ -345,7 +465,7 @@ def render_step_2():
             st.rerun()
 
 def render_step_3():
-    st.subheader("Step 3 — AI Content Brief")
+    st.subheader("📝 Step 3 — AI Content Brief")
     
     keyword = st.session_state.get("selected_keyword")
     if not keyword:
