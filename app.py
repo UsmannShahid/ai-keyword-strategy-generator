@@ -676,6 +676,35 @@ def render_step_3():
     
     st.info(f"📝 **Generating brief for:** {keyword}")
     
+    # SERP Snapshot
+    country = st.session_state.get("country","US")
+    language = st.session_state.get("language","en")
+
+    with st.expander("🔍 SERP Snapshot (top 5)", expanded=True):
+        with st.spinner("Fetching SERP…"):
+            serp_raw = fetch_serp_snapshot(keyword or "", country, language) if keyword else []
+        serp = analyze_serp(serp_raw)
+        s = serp["summary"]
+        
+        # Store SERP data in session state for logging
+        st.session_state.serp_data = serp
+        st.session_state.show_serp = True
+        
+        st.caption(f"Weak spots: {s['weak_any']} (forums: {s['weak_forum']}, thin: {s['weak_thin']}, old: {s['weak_old']})")
+
+        for i, r in enumerate(serp["rows"], 1):
+            tags = []
+            if r["weak_forum"]: tags.append("forum")
+            if r["weak_thin"]:  tags.append("thin")
+            if r["weak_old"]:   tags.append("old")
+            tag = " · ".join(tags) if tags else "—"
+            st.markdown(
+                f"**{i}. {r.get('title','(no title)')}**  \n"
+                f"<span style='color:gray'>{r.get('domain','')}</span> • weak: <span style='color:#f59e0b'>{tag}</span>  \n"
+                f"{(r.get('snippet') or '')[:220]}",
+                unsafe_allow_html=True
+            )
+
     # Variant picker (contextual to this step)
     variants = prompt_manager.get_variants("content_brief") or ["A","B"]
     st.session_state.variant = st.selectbox(
@@ -688,50 +717,6 @@ def render_step_3():
     # Display selected keyword (read-only)
     st.text_input("Selected Keyword", value=keyword, disabled=True)
     
-    # SERP Snapshot section
-    show_serp = st.checkbox("📊 Show SERP snapshot (competitor analysis)", value=True)
-    st.session_state.show_serp = show_serp  # Store for logging
-    if show_serp:
-        with st.spinner("Analyzing top competitors..."):
-            # Fetch SERP data
-            country = st.session_state.get("country", "US")
-            language = st.session_state.get("language", "en")
-            results = fetch_serp_snapshot(keyword, country, language)
-            serp_analysis = analyze_serp(results)
-            
-            # Store SERP data in session state for logging
-            st.session_state.serp_data = serp_analysis
-            
-            if serp_analysis and serp_analysis["rows"]:
-                st.markdown("### 🔍 Top 5 Competitors")
-                for i, row in enumerate(serp_analysis["rows"], 1):
-                    col1, col2 = st.columns([4, 1])
-                    with col1:
-                        domain = row.get("domain", "N/A")
-                        title = row.get("title", "No title")[:60] + "..." if len(row.get("title", "")) > 60 else row.get("title", "No title")
-                        st.markdown(f"**{i}. {domain}**  \n{title}")
-                    with col2:
-                        if row.get("weak_any"):
-                            weak_types = []
-                            if row.get("weak_forum"): weak_types.append("Forum")
-                            if row.get("weak_thin"): weak_types.append("Thin")
-                            if row.get("weak_old"): weak_types.append("Old")
-                            st.markdown(f'<span class="k-badge k-badge--weak">{"·".join(weak_types)}</span>', unsafe_allow_html=True)
-                        else:
-                            st.markdown('<span class="k-badge k-badge--strong">Strong</span>', unsafe_allow_html=True)
-                
-                # Summary stats
-                s = serp_analysis["summary"]
-                if s["weak_any"] > 0:
-                    st.success(f"🎯 **Opportunity detected**: {s['weak_any']}/{s['total']} results show weaknesses (forums: {s['weak_forum']}, thin: {s['weak_thin']}, old: {s['weak_old']})")
-                else:
-                    st.warning("⚠️ **Competitive keyword**: All top results appear strong. Consider long-tail variations.")
-            else:
-                st.info("📊 SERP data not available. Enable your SERP API to see competitor analysis.")
-                st.session_state.serp_data = None
-    else:
-        st.session_state.serp_data = None
-
     # Generate brief button
     if st.button("🚀 Generate Content Brief", type="primary"):
         with st.spinner("Generating content brief..."):

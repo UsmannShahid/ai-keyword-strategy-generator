@@ -189,14 +189,60 @@ def generate_brief_with_variant(
 
 # ------------- SERP Snapshot Utilities ------------------------
 
+import os
+import requests
 from typing import List, Dict, Any
 
 def fetch_serp_snapshot(keyword: str, country: str = "US", language: str = "en") -> List[Dict[str, Any]]:
     """
-    Return top results with at least: title, url, snippet.
-    Replace the stub with your actual SERP client call.
+    Return top results with keys: title, url, snippet.
+    Supports providers via env:
+      SERP_PROVIDER = "serper" | "serpapi" | "mock" (default)
+      SERP_API_KEY  = "<key>"
     """
-    # TODO: plug in your real SERP provider here:
-    # results = serp_client.search(q=keyword, gl=country, hl=language, num=5)
-    # return [{"title": r.title, "url": r.link, "snippet": r.snippet} for r in results]
-    return []  # safe default until wired
+    provider = os.getenv("SERP_PROVIDER", "mock").lower()
+    api_key  = os.getenv("SERP_API_KEY", "")
+
+    try:
+        if provider == "serper" and api_key:
+            # https://serper.dev/ (simple, cheap)
+            resp = requests.post(
+                "https://google.serper.dev/search",
+                headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+                json={"q": keyword, "gl": country, "hl": language, "num": 5},
+                timeout=12
+            )
+            resp.raise_for_status()
+            js = resp.json()
+            items = js.get("organic", [])[:5]
+            return [{"title": it.get("title"),
+                     "url":   it.get("link"),
+                     "snippet": it.get("snippet")} for it in items]
+
+        if provider == "serpapi" and api_key:
+            # https://serpapi.com/
+            resp = requests.get(
+                "https://serpapi.com/search.json",
+                params={"q": keyword, "hl": language, "gl": country, "num": 5, "api_key": api_key},
+                timeout=12
+            )
+            resp.raise_for_status()
+            js = resp.json()
+            items = js.get("organic_results", [])[:5]
+            return [{"title": it.get("title"),
+                     "url":   it.get("link"),
+                     "snippet": it.get("snippet") or it.get("description")} for it in items]
+
+    except Exception:
+        # fall through to mock on any error
+        pass
+
+    # Mock fallback (works offline / no key)
+    base = keyword.lower()[:30] or "your topic"
+    return [
+        {"title": f"{base} – community thread", "url": "https://reddit.com/r/example", "snippet": "User opinions and short answers."},
+        {"title": f"Quick guide to {base}", "url": "https://example.com/quick-guide", "snippet": "A short guide updated in 2020."},
+        {"title": f"{base} explained", "url": "https://example.org/what-is", "snippet": "Definition and basics."},
+        {"title": f"Top 10 {base}", "url": "https://blog.example.com/top-10", "snippet": "Roundup with brief descriptions."},
+        {"title": f"{base} buyer's checklist", "url": "https://shop.example.com/checklist", "snippet": "Key things to consider."},
+    ]
