@@ -37,6 +37,177 @@ if "selected_keyword" not in st.session_state:
 if "variant" not in st.session_state:
     st.session_state.variant = "A"
 
+# first-run onboarding flag
+if "seen_help" not in st.session_state:
+    st.session_state.seen_help = False
+if "show_help" not in st.session_state:
+    st.session_state.show_help = False
+
+# --- Help state ---
+if "help_open" not in st.session_state:
+    st.session_state.help_open = False
+if "help_step" not in st.session_state:
+    st.session_state.help_step = 1
+
+def _open_help(step: int | None = None):
+    if step is not None:
+        st.session_state.help_step = step
+    st.session_state.help_open = True
+
+def _close_help():
+    st.session_state.help_open = False
+
+def _step_tip_popover(lines: list[str]):
+    with st.popover("Need tips?"):
+        for x in lines:
+            st.markdown(f"- {x}")
+
+def _current_step_help():
+    step = st.session_state.get("help_step", 1)
+    kw = st.session_state.get("selected_keyword") or st.session_state.get("seed_input") or "your topic"
+    if step == 1:
+        return {
+            "title": "Step 1 — Inputs",
+            "why": [
+                "Clear inputs → better keyword discovery & intent match.",
+                "Country/language alignment avoids chasing irrelevant SERPs."
+            ],
+            "how": [
+                "Use a **broad seed** (e.g., 'ergonomic chair').",
+                "Fill **country/language** for localized SERPs.",
+                "Describe audience to bias toward buyer vs. info intent."
+            ],
+            "tips": [
+                "Avoid super‑niche seeds; you'll filter in Step 2.",
+                "Add 1–2 industry terms to improve related entities."
+            ],
+            "example": [
+                "Seed: `home office chairs`",
+                "Audience: `remote workers`  · Country: `US` · Language: `en`"
+            ]
+        }
+    if step == 2:
+        return {
+            "title": "Step 2 — Quick‑Win Keywords",
+            "why": [
+                "Quick‑Win score highlights rankable opportunities.",
+                "Intent lets you prioritize buyer vs. info pages."
+            ],
+            "how": [
+                "Raise **Min score** to 60–80 to focus on winnable terms.",
+                "Use **Include/Exclude** to tighten topical focus.",
+                "Pick a keyword → we'll generate a brief automatically."
+            ],
+            "tips": [
+                "Prefer **specific** modifiers (size, price, 'near me').",
+                "Scan SERP for outdated/weak results to confirm opportunity."
+            ],
+            "example": [
+                "Selected: `affordable pool cleaning near me`",
+                "Reason: high intent + local modifier + decent volume."
+            ]
+        }
+    # step 3
+    return {
+        "title": "Step 3 — AI Content Brief",
+        "why": [
+            "Structured briefs speed writing and improve on‑page SEO.",
+            "Consistent H2/H3 + entities → better topical coverage."
+        ],
+        "how": [
+            "Choose Variant **A** for stricter SEO; **B** for writer tone.",
+            "Download Markdown and share with your writer/CMS.",
+            "Rate the brief to improve prompts over time."
+        ],
+        "tips": [
+            "Add internal links to money pages.",
+            "If SERP leaders are thin/outdated, expand sections and add FAQs."
+        ],
+        "example": [
+            f"Briefing: `{kw}`",
+            "Includes: Title, Meta, Outline, Entities, Links, FAQs."
+        ]
+    }
+
+@st.dialog("Help & Guidance")  # modern Streamlit dialog
+def _help_dialog():
+    data = _current_step_help()
+    st.markdown(f"### {data['title']}")
+    tabs = st.tabs(["Overview", "Why this helps SEO", "How to use", "Pro tips", "Example"])
+    with tabs[0]:
+        st.write(
+            "- **Find** low‑competition, high‑intent keywords\n"
+            "- **Choose** one with the best Quick‑Win score\n"
+            "- **Generate** a clean, writer‑ready brief\n"
+            "- **A/B test** prompts, **rate**, and **log**"
+        )
+    with tabs[1]:
+        for x in data["why"]: st.markdown(f"- {x}")
+    with tabs[2]:
+        for x in data["how"]: st.markdown(f"- {x}")
+    with tabs[3]:
+        for x in data["tips"]: st.markdown(f"- {x}")
+    with tabs[4]:
+        for x in data["example"]: st.markdown(f"- {x}")
+    st.divider()
+    if st.button("Close", type="primary"):
+        _close_help()
+
+# help content display
+def show_help_modal():
+    st.session_state.show_help = True
+
+def render_help_content():
+    if st.session_state.show_help:
+        with st.container():
+            st.markdown("---")
+            st.markdown("### ✨ Quick-Win Keyword Finder + AI Content Brief")
+            
+            col1, col2 = st.columns([4, 1])
+            with col2:
+                if st.button("✕ Close", key="close_help"):
+                    st.session_state.show_help = False
+                    st.rerun()
+            
+            st.write(
+                "This tool helps you **find SEO opportunities** your competitors are missing — "
+                "then turns them into a **ready-to-write content brief** for your writers or AI tools."
+            )
+
+            st.markdown("#### 🚀 Why this matters for SEO")
+            st.write(
+                "- **Find low-competition keywords**: Target search terms you can realistically rank for.\n"
+                "- **Focus on intent**: Prioritize keywords with buyer or informational intent.\n"
+                "- **Save research time**: Skip hours of manual SERP checks.\n"
+                "- **Publish faster**: Give your writers a structured, optimized brief.\n"
+                "- **Outperform rivals**: Identify outdated or weak top-ranking content and beat it."
+            )
+
+            st.markdown("#### 📌 How to use")
+            st.write(
+                "1. **Describe your niche** or enter a seed keyword.\n"
+                "2. Review the generated **Quick-Win keywords**.\n"
+                "3. Pick one → **Generate a content brief** instantly.\n"
+                "4. Export as Markdown or copy-paste into your CMS."
+            )
+
+            st.markdown("#### 📄 What's in a content brief?")
+            st.write(
+                "- SEO-friendly title & meta description\n"
+                "- H2/H3 outline with suggested word count\n"
+                "- Related keywords and entities\n"
+                "- Internal and external link ideas\n"
+                "- FAQs to capture extra search queries"
+            )
+
+            st.markdown("> **Tip:** Use this tool alongside Google Search Console or competitor analysis to target missed opportunities.")
+            
+            if st.button("Got it", type="primary", key="got_it_help"):
+                st.session_state.seen_help = True
+                st.session_state.show_help = False
+                st.rerun()
+            st.markdown("---")
+
 # Helper functions for navigation
 def _go(step: int):
     st.session_state.ux_step = step
@@ -58,6 +229,19 @@ st.markdown("""
 ### ✨ Quick‑Win Keyword Finder + AI Content Brief
 Find low‑competition, high‑intent keywords fast — then generate a clean, writer‑ready brief in one click.
 """)
+
+# header bar: Help button on the right
+cols = st.columns([1,1,1,1,1])
+with cols[-1]:
+    if st.button("❓ Help"):
+        _open_help(st.session_state.ux_step)
+
+# Render dialog if flagged
+if st.session_state.help_open:
+    _help_dialog()
+
+# render help content if requested (legacy system)
+render_help_content()
 
 def step_header():
     s = st.session_state.ux_step
@@ -223,6 +407,11 @@ def to_dataframe(data: dict) -> pd.DataFrame:
 
 def render_step_1():
     st.subheader("🧭 Step 1 — Tell us your niche")
+    _step_tip_popover([
+        "Start broad; refine with filters in Step 2.",
+        "Set country/language for localized SERPs.",
+    ])
+    st.caption("Pro tip: Start broad (e.g., 'ergonomic chair') — we'll narrow with Quick‑Win filters.")
     
     # Business description input
     business_desc = st.text_input("Describe your website or business:", 
@@ -278,6 +467,11 @@ def render_step_1():
 
 def render_step_2():
     st.subheader("🔎 Step 2 — Quick‑Win Keywords")
+    _step_tip_popover([
+        "Raise Min score to focus on wins.",
+        "Use Include/Exclude to stay on-topic.",
+    ])
+    st.caption("Sort by score and volume. Pick a high‑intent keyword to generate a brief.")
     
     # Show the business context
     business_desc = st.session_state.get("business_desc", "")
@@ -466,6 +660,11 @@ def render_step_2():
 
 def render_step_3():
     st.subheader("📝 Step 3 — AI Content Brief")
+    _step_tip_popover([
+        "Variant A = structure, Variant B = tone.",
+        "Download as Markdown and share.",
+    ])
+    st.caption("Choose a prompt variant (A/B) for structure vs. tone. Download as Markdown for writers.")
     
     keyword = st.session_state.get("selected_keyword")
     if not keyword:
