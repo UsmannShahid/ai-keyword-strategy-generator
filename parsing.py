@@ -1,3 +1,4 @@
+
 # parsing.py
 """
 Robust parsing utilities for keyword extraction from LLM responses.
@@ -272,3 +273,35 @@ def detect_placeholders(brief: Dict[str, Any]) -> bool:
         "example #1", "h3 1", "h2 1"
     ]
     return any(p in text for p in patterns)
+
+# ---------- Generic JSON parser for tool outputs ----------
+from typing import Tuple
+
+def parse_json_object(raw: str) -> Tuple[Dict[str, Any], bool]:
+    """
+    Parse a single JSON object from raw text (direct or inside code fences).
+    Returns (data, is_json). If parsing fails, returns ({"raw": raw}, False).
+    """
+    if not isinstance(raw, str):
+        return {"raw": str(raw)}, False
+    txt = raw.strip()
+    if not txt:
+        return {"raw": ""}, False
+
+    # 1) direct
+    try:
+        return json.loads(txt), True
+    except Exception:
+        pass
+
+    # 2) code fence or mixed text -> extract largest {...}
+    start = txt.find("{")
+    end = txt.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        snippet = txt[start:end+1]
+        try:
+            return json.loads(snippet), True
+        except Exception:
+            pass
+
+    return {"raw": txt}, False

@@ -1,10 +1,20 @@
+from __future__ import annotations
+# Generic text generation for service wrappers
+def generate_text(prompt: str, json_mode: bool = False) -> str:
+    """
+    Generate text from LLM using the default client. Supports JSON mode.
+    """
+    client = KeywordLLMClient.create_default()
+    # Use generate_content_brief for generic prompt, or add a more flexible method if needed
+    if json_mode:
+        return client.generate_content_brief(prompt)
+    else:
+        return client.generate_keywords_raw(prompt, json_mode=False)
 # llm_client.py
 """
 OpenAI LLM client for keyword generation.
 Handles API communication, prompt building, and response processing.
 """
-
-from __future__ import annotations
 import os
 from typing import Dict, Any, Optional
 from openai import OpenAI

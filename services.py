@@ -1,10 +1,50 @@
+import json
+from typing import Dict, Any, Optional, Tuple
+from prompt_manager import prompt_manager
+from llm_client import generate_text  # adjust if named differently
+from parsing import parse_json_object
+# Service wrapper for Writer's Notes
+def generate_writer_notes(
+    *,
+    keyword: str,
+    brief_dict: Dict[str, Any],
+    serp_summary: Optional[Dict[str, Any]] = None,
+    variant: str = "A",
+) -> Tuple[Dict[str, Any], bool, str, Optional[Dict[str, int]]]:
+    """
+    Generate structured Writer's Notes as JSON using prompt variants A/B.
+    Returns: (notes_dict, is_json, prompt_used, usage_dict)
+    """
+    prompt = prompt_manager.format_prompt_variant(
+        base_name="writer_notes",
+        variant=variant,
+        keyword=keyword,
+        brief_json=json.dumps(brief_dict, ensure_ascii=False),
+        serp_summary_json=json.dumps(serp_summary or {}, ensure_ascii=False),
+    )
+
+    # Prefer JSON mode for strict JSON output if your client supports it
+    result = generate_text(prompt, json_mode=True)  # set json_mode in llm_client if available
+    # Normalize
+    if isinstance(result, dict):
+        raw_text = result.get("text") or result.get("output") or ""
+        usage = result.get("usage")
+    else:
+        raw_text, usage = str(result), None
+
+    notes, ok = parse_json_object(raw_text)
+    return notes, ok, prompt, usage
 # services.py
 """
 High-level service functions for keyword generation.
 Coordinates between LLM client and parsing logic.
 """
 
-from __future__ import annotations
+import json
+from typing import Dict, Any, Optional, Tuple
+from prompt_manager import prompt_manager
+from llm_client import generate_text  # adjust if named differently
+from parsing import parse_json_object
 import time
 from typing import Dict, Any, Tuple, Optional
 from llm_client import KeywordLLMClient
