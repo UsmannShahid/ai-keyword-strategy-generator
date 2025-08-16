@@ -569,6 +569,11 @@ def render_step_2():
             st.button("← Back", on_click=lambda: setattr(st.session_state, "ux_step", 1))
             return
 
+        # Ensure there is a default pick (top by score, then volume)
+        if not st.session_state.get("kw_pick_select") and not fdf.empty:
+            top_row = fdf.sort_values(["QW Score", "Volume"], ascending=False).iloc[0]
+            st.session_state.kw_pick_select = top_row["Keyword"]
+            st.session_state.selected_keyword = st.session_state.kw_pick_select  # keep in sync
         # ---- Enhanced Styler: color QW Score, volume bars, intent badges ----
         def style_df(_df: pd.DataFrame):
             sty = _df.style
@@ -640,6 +645,10 @@ def render_step_2():
             on_change=_on_keyword_pick,
         )
 
+        # Keep selected_keyword in sync even if user doesn't change the selectbox
+        if pick and st.session_state.get("selected_keyword") != pick:
+            st.session_state.selected_keyword = pick
+
         if pick:
             st.success(f"✅ Selected: **{pick}**")
 
@@ -666,7 +675,7 @@ def render_step_2():
             st.session_state.ux_step = 1
             st.rerun()
     with col2:
-        disabled = not st.session_state.get("selected_keyword")
+        disabled = not (st.session_state.get("selected_keyword") or st.session_state.get("kw_pick_select"))
         if st.button("Next: Generate Brief →", type="primary", disabled=disabled):
             st.session_state.ux_step = 3
             st.rerun()
