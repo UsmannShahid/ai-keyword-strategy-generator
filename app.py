@@ -22,6 +22,7 @@ from eval_logger import log_eval
 from brief_renderer import brief_to_markdown
 from parsing import parse_brief_output
 from serp_utils import analyze_serp
+from services import generate_writer_notes
 
 
 # OpenAI SDK (current usage style)
@@ -768,6 +769,98 @@ def render_step_3():
         else:
             st.warning("⚠️ Model returned non-JSON output. Showing raw:")
             st.markdown(output or "_No output_")
+
+        # Writer Notes
+        st.markdown("---")
+        st.subheader("🧠 Writer’s Notes")
+
+        # Variant selector (re-uses your prompt system)
+        from prompt_manager import prompt_manager as _pm
+        wn_variants = _pm.get_variants("writer_notes") or ["A","B"]
+        wn_variant = st.selectbox("Notes Variant", wn_variants, index=0, key="wn_variant")
+
+        # Generate button
+        if st.button("Generate Writer’s Notes", type="primary", disabled=not keyword):
+            # 1) get the brief dict you already parsed above
+            #    if you named it differently, adjust:
+            brief_dict = data if is_json else {"title": keyword, "outline": {"H2": []}}
+
+            # 2) get the SERP summary if available (from earlier block)
+            serp_summary = locals().get("s") or st.session_state.get("serp_summary")
+
+            with st.spinner("Creating notes…"):
+                notes, ok, prompt_used, usage = generate_writer_notes(
+                    keyword=keyword,
+                    brief_dict=brief_dict,
+                    serp_summary=serp_summary,
+                    variant=wn_variant,
+                )
+
+            if not ok:
+                st.warning("Model did not return valid JSON. Showing raw:")
+                st.code(notes.get("raw", ""), language="json")
+            else:
+                # --- Pretty render
+                def _bul(m, title, items):
+                    items = [str(x).strip() for x in (items or []) if str(x).strip()]
+                    if items:
+                        m.markdown(f"**{title}**")
+                        for it in items:
+                            m.markdown(f"- {it}")
+
+                st.markdown(f"**Audience:** {notes.get('target_audience','—')}  \n"
+                            f"**Intent:** {notes.get('search_intent','—')}  \n"
+                            f"**Primary angle:** {notes.get('primary_angle','—')}")
+                _bul(st, "Writer notes", notes.get("writer_notes"))
+                _bul(st, "Must-cover sections", notes.get("must_cover_sections"))
+                _bul(st, "Entity gaps", notes.get("entity_gaps"))
+                _bul(st, "Data freshness", notes.get("data_freshness"))
+                _bul(st, "Internal link targets", notes.get("internal_link_targets"))
+                _bul(st, "External citations needed", notes.get("external_citations_needed"))
+                _bul(st, "Formatting enhancements", notes.get("formatting_enhancements"))
+                _bul(st, "Tone & style", notes.get("tone_style"))
+                _bul(st, "CTA ideas", notes.get("cta_ideas"))
+                _bul(st, "Risk flags", notes.get("risk_flags"))
+                st.markdown(f"**Recommended word count:** {notes.get('recommended_word_count','—')}")
+
+                # --- Download as Markdown
+                md_lines = [f"# Writer’s Notes — {keyword}", ""]
+                for k in ["target_audience","search_intent","primary_angle"]:
+                    md_lines.append(f"**{k.replace('_',' ').title()}:** {notes.get(k,'—')}")
+                md_lines.append("")
+                def _section(title, items):
+                    if items:
+                        md_lines.append(f"## {title}")
+                        md_lines.extend([f"- {x}" for x in items])
+                        md_lines.append("")
+                _section("Writer notes", notes.get("writer_notes"))
+                _section("Must-cover sections", notes.get("must_cover_sections"))
+                _section("Entity gaps", notes.get("entity_gaps"))
+                _section("Data freshness", notes.get("data_freshness"))
+                _section("Internal link targets", notes.get("internal_link_targets"))
+                _section("External citations needed", notes.get("external_citations_needed"))
+                _section("Formatting enhancements", notes.get("formatting_enhancements"))
+                _section("Tone & style", notes.get("tone_style"))
+                _section("CTA ideas", notes.get("cta_ideas"))
+                _section("Risk flags", notes.get("risk_flags"))
+                if rc := notes.get("recommended_word_count"):
+                    md_lines.append(f"**Recommended word count:** {rc}")
+                md_blob = "\n".join(md_lines).strip()
+
+                st.download_button(
+                    "⬇️ Download Writer’s Notes (Markdown)",
+                    data=md_blob.encode("utf-8"),
+                    file_name=f"{(keyword or 'notes').replace(' ','-')}__notes_{wn_variant}.md",
+                    mime="text/markdown",
+                    use_container_width=True,
+                )
+
+                with st.expander("Notes JSON (debug)"):
+                    st.json(notes)
+
+                # Optional: stash SERP summary in session for logging later
+                st.session_state["serp_summary"] = serp_summary
+
         
         # Feedback section
         st.markdown("---")
@@ -775,24 +868,55 @@ def render_step_3():
         rating = st.slider("Rating (1=poor, 5=excellent)", min_value=1, max_value=5, value=4)
         notes = st.text_area("Optional feedback (what was good/bad?)", placeholder="e.g., missing competitor analysis, great structure...")
         
-        if st.button("💾 Save Feedback"):
-            log_eval(
-                variant=st.session_state.variant,
-                keyword=keyword,
-                prompt=st.session_state.get("brief_prompt", ""),
-                output=output,
-                latency_ms=st.session_state.get("brief_latency", 0),
-                tokens_prompt=st.session_state.get("brief_usage", {}).get("prompt_tokens") if st.session_state.get("brief_usage") else None,
-                tokens_completion=st.session_state.get("brief_usage", {}).get("completion_tokens") if st.session_state.get("brief_usage") else None,
-                user_rating=rating,
-                user_notes=notes,
-                extra={
-                    "app_version": "beta-mvp",
-                    "checklist": None,  # TODO: Implement quality checklist
-                    "serp_summary": st.session_state.get("serp_data", {}).get("summary") if st.session_state.get("show_serp") and keyword else None
-                },
-            )
-            st.success("✅ Feedback saved! This helps improve the AI prompts.")
+        # Ensure: from eval_logger import log_eval  (at top of file)
+
+    if st.button("💾 Save Feedback"):
+        # --- Safe pulls from session ---
+        brief_prompt   = st.session_state.get("brief_prompt", "")
+        brief_latency  = float(st.session_state.get("brief_latency", 0) or 0)
+        brief_usage    = st.session_state.get("brief_usage") or {}
+        tokens_prompt  = brief_usage.get("prompt_tokens")
+        tokens_comp    = brief_usage.get("completion_tokens")
+
+        # Optional quality signals (only if you set them elsewhere)
+        checklist      = st.session_state.get("quality_checklist")  # dict or None
+        auto_flags     = st.session_state.get("brief_auto_flags")   # list or None
+        is_json        = st.session_state.get("brief_is_json")      # bool or None
+
+        # SERP summary if available
+        serp_summary = None
+        if st.session_state.get("show_serp") and keyword:
+            serp_state = st.session_state.get("serp_data") or {}
+            serp_summary = serp_state.get("summary")
+
+        # Build extra payload safely
+        extra_payload = {
+            "app_version": "beta-mvp",
+            "type": "content_brief",
+            "is_json": bool(is_json) if is_json is not None else None,
+            "auto_flags": auto_flags or [],
+            "checklist": checklist or {},
+            "serp_summary": serp_summary,
+            "output_chars": len(output or ""),
+        }
+
+        # Log the evaluation
+        log_eval(
+            variant=st.session_state.variant,
+            keyword=keyword or "",
+            prompt=brief_prompt,
+            output=output or "",
+            latency_ms=brief_latency,
+            tokens_prompt=tokens_prompt,
+            tokens_completion=tokens_comp,
+            user_rating=rating,
+            user_notes=notes,
+            extra=extra_payload,
+        )
+
+        st.success("✅ Feedback saved! This helps improve the AI prompts.")
+        st.toast("Saved to evals.jsonl")
+
     
     # Navigation buttons
     st.divider()

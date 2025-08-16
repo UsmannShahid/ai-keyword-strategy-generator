@@ -9,7 +9,7 @@ from scoring import add_scores
 from eval_logger import log_eval, LOG_PATH
 from eval_utils import load_evals_df
 
-def fake_generate_keywords_raw(self, prompt: str):
+def fake_generate_keywords_raw(self, prompt: str, json_mode: bool = False):
     if 'content_brief' in prompt.lower():
         return '{"title":"Ergonomic Chair Buying Guide","outline":["Intro","Top 5 Features","FAQ"],"sections":{"Intro":"Intro text","Top 5 Features":["Lumbar support","Adjustable height"],"FAQ":["What is ergonomic?" ]}}'
     return "Here you go:\n" + json.dumps({
