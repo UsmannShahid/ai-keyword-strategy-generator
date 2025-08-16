@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Iterable
 import pandas as pd
-
+from typing import Dict, Any
 # Common commercial/action modifiers that signal purchase or strong intent
 MODIFIERS = {
     "buy","price","pricing","cost","cheap","affordable","discount","deal","vs","compare","comparison",
@@ -84,3 +84,64 @@ def add_scores(df: pd.DataFrame, intent_col: str = "category", kw_col: str = "ke
     # Restore original order for display, but keep the new cols
     scored = scored.reindex(sorted(scored.index), copy=False)
     return scored
+
+# Breakdown Helper
+def quickwin_breakdown(row: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Return a consistent breakdown dict for a keyword row.
+    Expected row keys (best effort): 'Keyword','Volume','Intent','QW Score','SERP_weak_forum','SERP_weak_thin','SERP_weak_old'
+    """
+    kw = row.get("Keyword") or row.get("keyword") or ""
+    score = float(row.get("QW Score", 0) or 0)
+    vol = int(row.get("Volume", 0) or 0)
+    intent = (row.get("Intent") or "").lower()
+
+    # If you already compute sub-scores, plug them here; otherwise do simple proxies:
+    subs = {
+        "volume_score": min(100, (vol / 1000) * 100) if vol else 0,  # naive proxy
+        "intent_boost": 20 if any(w in intent for w in ["transaction", "buyer", "commercial"]) else (10 if "info" in intent else 0),
+        "serp_weakness": 0,  # fill from SERP snapshot if available
+    }
+
+    # Optionally fill weakness from cached SERP summary on the row
+    weak_forum = 1 if row.get("SERP_weak_forum") else 0
+    weak_thin  = 1 if row.get("SERP_weak_thin")  else 0
+    weak_old   = 1 if row.get("SERP_weak_old")   else 0
+    subs["serp_weakness"] = (weak_forum + weak_thin + weak_old) * 10  # naive 0–30
+
+    return {
+        "keyword": kw,
+        "score": round(score, 1),
+        "volume": vol,
+        "intent": intent or "unknown",
+        "subscores": subs,
+        "weak_flags": {
+            "forum": bool(weak_forum),
+            "thin":  bool(weak_thin),
+            "old":   bool(weak_old),
+        },
+    }
+
+def explain_quickwin(breakdown: Dict[str, Any]) -> str:
+    """Plain-English explanation from the breakdown dict."""
+    kw = breakdown["keyword"]
+    s  = breakdown["score"]
+    vol = breakdown["volume"]
+    intent = breakdown["intent"]
+    subs = breakdown["subscores"]
+    weak = breakdown["weak_flags"]
+
+    reasons = []
+    if vol: reasons.append(f"decent search volume (~{vol}/mo)")
+    if subs["intent_boost"] >= 20: reasons.append("strong buyer/transactional intent")
+    elif "info" in intent: reasons.append("clear informational intent")
+    if subs["serp_weakness"] >= 10:
+        weak_bits = [name for name, v in weak.items() if v]
+        if weak_bits:
+            reasons.append("SERP weak spots: " + ", ".join(weak_bits))
+
+    if not reasons:
+        reasons.append("limited signals; consider broader modifiers or adjacent topics")
+
+    verdict = "good quick win" if s >= 70 else ("promising but needs angle" if s >= 50 else "likely hard to win now")
+    return f"“{kw}” looks {verdict} because: " + "; ".join(reasons) + "."

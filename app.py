@@ -17,10 +17,9 @@ from services import KeywordService, generate_brief_with_variant, fetch_serp_sna
 from parsing import SAFE_OUTPUT, parse_brief_output, detect_placeholders
 from utils import slugify, default_report_name
 from prompt_manager import prompt_manager
-from scoring import add_scores
+from scoring import add_scores, quickwin_breakdown, explain_quickwin
 from eval_logger import log_eval
 from brief_renderer import brief_to_markdown
-from parsing import parse_brief_output
 from serp_utils import analyze_serp
 from services import generate_writer_notes
 
@@ -358,7 +357,6 @@ if not OPENAI_API_KEY.startswith("sk-"):
     st.error("⚠️ API key format appears incorrect. OpenAI keys start with 'sk-'")
     st.stop()
 
-st.set_page_config(page_title="AI Keyword Tool", page_icon="🔍", layout="centered")
 st.title("🔍 AI Keyword Strategy Generator")
 
 # Quick navigation link to A/B comparison page
@@ -470,12 +468,12 @@ def render_step_1():
         st.rerun()
 
 def render_step_2():
-    st.subheader("🔎 Step 2 — Quick‑Win Keywords")
+    st.subheader("🔎 Step 2 — Quick-Win Keywords")
     _step_tip_popover([
         "Raise Min score to focus on wins.",
         "Use Include/Exclude to stay on-topic.",
     ])
-    st.caption("Sort by score and volume. Pick a high‑intent keyword to generate a brief.")
+    st.caption("Sort by score and volume. Pick a high-intent keyword to generate a brief.")
     
     # Show the business context
     business_desc = st.session_state.get("business_desc", "")
@@ -551,9 +549,9 @@ def render_step_2():
         # Quick filters
         with st.expander("🔍 Filters", expanded=True):
             c1, c2, c3 = st.columns([1,1,1])
-            min_score = c1.slider("Min Quick‑Win score", 0, 100, 60)
-            include = c2.text_input("Include terms", value="", placeholder="comma‑separated (optional)")
-            exclude = c3.text_input("Exclude terms", value="", placeholder="comma‑separated (optional)")
+            min_score = c1.slider("Min Quick-Win score", 0, 100, 60)
+            include = c2.text_input("Include terms", value="", placeholder="comma-separated (optional)")
+            exclude = c3.text_input("Exclude terms", value="", placeholder="comma-separated (optional)")
 
         filt = (df["QW Score"] >= min_score)
         if include.strip():
@@ -575,22 +573,20 @@ def render_step_2():
         def style_df(_df: pd.DataFrame):
             sty = _df.style
 
-            # Simple color coding for score (without matplotlib dependency)
             if "QW Score" in _df.columns:
                 def score_color(val):
                     try:
                         score = float(val)
                         if score >= 80:
-                            return "background-color:#dcfce7;color:#166534"  # green
+                            return "background-color:#dcfce7;color:#166534"
                         elif score >= 60:
-                            return "background-color:#fef3c7;color:#92400e"  # yellow
+                            return "background-color:#fef3c7;color:#92400e"
                         else:
-                            return "background-color:#fee2e2;color:#991b1b"  # red
+                            return "background-color:#fee2e2;color:#991b1b"
                     except:
                         return ""
                 sty = sty.map(score_color, subset=["QW Score"])
 
-            # intent pill look via CSS
             if "Intent" in _df.columns:
                 def intent_color(val):
                     v = str(val).lower()
@@ -604,7 +600,6 @@ def render_step_2():
                 sty = sty.map(intent_color, subset=["Intent"])
             return sty
 
-        # Display the styled dataframe
         show_cols = [c for c in ["Keyword","QW Score","Intent","Volume","Notes"] if c in fdf.columns]
         st.markdown("### 📊 Keyword Results")
         st.dataframe(
@@ -627,14 +622,14 @@ def render_step_2():
                     st.markdown(f"**{row['Keyword']}** {intent_badge}", unsafe_allow_html=True)
                     st.caption(f"Volume: {row.get('Volume', 'N/A')} | Score: {row['QW Score']:.0f}")
                 with col2:
-                    pass  # spacing
+                    pass
                 with col3:
                     if st.button(f"📝 Brief This", key=f"brief_{idx}_{row['Keyword'][:20]}"):
                         st.session_state.selected_keyword = row['Keyword'] 
                         st.session_state.ux_step = 3
                         st.rerun()
 
-        # Selection control (alternative method)
+        # Selection control
         st.markdown("#### Pick a keyword to brief")
         pick = st.selectbox(
             "Keyword",
@@ -642,14 +637,28 @@ def render_step_2():
             index=0,
             key="kw_pick_select",
             label_visibility="collapsed",
-            on_change=_on_keyword_pick,   # ⬅️ auto-advance
+            on_change=_on_keyword_pick,
         )
 
-        # Show current selection status
         if pick:
             st.success(f"✅ Selected: **{pick}**")
+
+            # 👉 NEW: Explain Quick-Win Score popover
+            from scoring import quickwin_breakdown, explain_quickwin
+            try:
+                row = fdf.loc[fdf["Keyword"] == pick].iloc[0].to_dict()
+                bd = quickwin_breakdown(row)
+                with st.popover("🔍 Explain this score"):
+                    st.markdown(f"**Quick-Win Score:** {bd['score']}")
+                    st.markdown(f"- Volume: **{bd['volume']}**/mo")
+                    st.markdown(f"- Intent: **{bd['intent']}**")
+                    subs = bd["subscores"]
+                    st.markdown(f"- Subscores → volume={int(subs['volume_score'])}, intent_boost={subs['intent_boost']}, serp_weakness={subs['serp_weakness']}")
+                    st.divider()
+                    st.write(explain_quickwin(bd))
+            except Exception as e:
+                st.warning(f"Could not explain score: {e}")
     
-    # Navigation buttons
     st.divider()
     col1, col2 = st.columns([1,1])
     with col1:
@@ -661,6 +670,7 @@ def render_step_2():
         if st.button("Next: Generate Brief →", type="primary", disabled=disabled):
             st.session_state.ux_step = 3
             st.rerun()
+
 
 def render_step_3():
     st.subheader("📝 Step 3 — AI Content Brief")
@@ -867,8 +877,8 @@ def render_step_3():
         st.markdown("### 💭 How was this brief?")
         rating = st.slider("Rating (1=poor, 5=excellent)", min_value=1, max_value=5, value=4)
         notes = st.text_area("Optional feedback (what was good/bad?)", placeholder="e.g., missing competitor analysis, great structure...")
-        
-        # Ensure: from eval_logger import log_eval  (at top of file)
+
+    # Button to save feedback
 
     if st.button("💾 Save Feedback"):
         # --- Safe pulls from session ---
@@ -878,10 +888,10 @@ def render_step_3():
         tokens_prompt  = brief_usage.get("prompt_tokens")
         tokens_comp    = brief_usage.get("completion_tokens")
 
-        # Optional quality signals (only if you set them elsewhere)
-        checklist      = st.session_state.get("quality_checklist")  # dict or None
-        auto_flags     = st.session_state.get("brief_auto_flags")   # list or None
-        is_json        = st.session_state.get("brief_is_json")      # bool or None
+        # Optional quality signals
+        checklist      = st.session_state.get("quality_checklist")   # dict or None
+        auto_flags     = st.session_state.get("brief_auto_flags")    # list or None
+        is_json        = st.session_state.get("brief_is_json")       # bool or None
 
         # SERP summary if available
         serp_summary = None
@@ -889,7 +899,25 @@ def render_step_3():
             serp_state = st.session_state.get("serp_data") or {}
             serp_summary = serp_state.get("summary")
 
-        # Build extra payload safely
+        # 👉 NEW: Quick-Win breakdown for the selected keyword (if we can find the row)
+        qw_breakdown = None
+        qw_expl      = None
+        try:
+            df_all = st.session_state.get("generated_df")
+            sel_kw = st.session_state.get("selected_keyword") or st.session_state.get("kw_pick_select")
+            if df_all is not None and sel_kw:
+                # locate the row by keyword (case-insensitive, safe)
+                row_match = df_all.loc[df_all["Keyword"].str.lower() == str(sel_kw).lower()]
+                if not row_match.empty:
+                    bd = quickwin_breakdown(row_match.iloc[0].to_dict())
+                    qw_breakdown = bd
+                    qw_expl = explain_quickwin(bd)
+        except Exception as e:
+            # don't fail logging if breakdown fails
+            qw_breakdown = {"error": str(e)}
+            qw_expl = None
+
+        # Build extra payload
         extra_payload = {
             "app_version": "beta-mvp",
             "type": "content_brief",
@@ -897,6 +925,8 @@ def render_step_3():
             "auto_flags": auto_flags or [],
             "checklist": checklist or {},
             "serp_summary": serp_summary,
+            "quickwin_breakdown": qw_breakdown,
+            "quickwin_explanation": qw_expl,
             "output_chars": len(output or ""),
         }
 
@@ -916,6 +946,7 @@ def render_step_3():
 
         st.success("✅ Feedback saved! This helps improve the AI prompts.")
         st.toast("Saved to evals.jsonl")
+
 
     
     # Navigation buttons
