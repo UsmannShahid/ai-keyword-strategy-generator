@@ -7,7 +7,8 @@ Usage:
 """
 
 from __future__ import annotations
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional
+
 
 
 def _as_list(value: Any) -> List[str]:
@@ -115,3 +116,81 @@ def brief_to_markdown(brief: Dict[str, Any]) -> str:
 
     parts.append("> ✅ Tip: Add 1–2 internal CTAs and a comparison table if buyer intent is strong.\n")
     return "\n".join(parts).strip()
+
+
+# --- Extended, writer-ready variant that can merge Writer Notes + SERP summary ---
+
+
+def _notes_lines(notes: Dict[str, Any]) -> List[str]:
+    lines: List[str] = []
+    if not isinstance(notes, dict):
+        return lines
+
+    def _add(title: str, items: Iterable[str]):
+        items = [str(x).strip() for x in (items or []) if str(x).strip()]
+        if items:
+            lines.append(f"## {title}")
+            lines.extend([f"- {x}" for x in items])
+            lines.append("")
+
+    # header trio
+    hdr_bits = []
+    if notes.get("target_audience"): hdr_bits.append(f"**Audience:** {notes['target_audience']}")
+    if notes.get("search_intent"):   hdr_bits.append(f"**Intent:** {notes['search_intent']}")
+    if notes.get("primary_angle"):   hdr_bits.append(f"**Primary angle:** {notes['primary_angle']}")
+    if hdr_bits:
+        lines.append("## 🧠 Writer’s Notes — Overview")
+        lines.append("  \n".join(hdr_bits))
+        lines.append("")
+
+    _add("🧠 Writer notes", notes.get("writer_notes"))
+    _add("📌 Must-cover sections", notes.get("must_cover_sections"))
+    _add("🧩 Entity gaps", notes.get("entity_gaps"))
+    _add("🗞️ Data freshness", notes.get("data_freshness"))
+    _add("🔗 Internal link targets", notes.get("internal_link_targets"))
+    _add("🌐 External citations needed", notes.get("external_citations_needed"))
+    _add("🧰 Formatting enhancements", notes.get("formatting_enhancements"))
+    _add("🎙️ Tone & style", notes.get("tone_style"))
+    _add("🎯 CTA ideas", notes.get("cta_ideas"))
+    _add("⚠️ Risk flags", notes.get("risk_flags"))
+
+    if notes.get("recommended_word_count"):
+        lines.append(f"**Recommended word count:** {notes['recommended_word_count']}")
+        lines.append("")
+    return lines
+
+def _serp_summary_lines(serp_summary: Dict[str, Any]) -> List[str]:
+    if not isinstance(serp_summary, dict):
+        return []
+    s = serp_summary or {}
+    bits = []
+    bits.append(f"- Weak spots total: **{s.get('weak_any', 0)}**")
+    bits.append(f"- Forums: **{s.get('weak_forum', 0)}**, Thin: **{s.get('weak_thin', 0)}**, Old: **{s.get('weak_old', 0)}**")
+    return ["## 🔍 SERP Snapshot — Summary", *bits, ""]
+
+def brief_to_markdown_full(
+    brief: Dict[str, Any],
+    *,
+    writer_notes: Optional[Dict[str, Any]] = None,
+    serp_summary: Optional[Dict[str, Any]] = None
+) -> str:
+    """
+    Build a single, writer-ready Markdown doc:
+      - Title, Meta, Outline, Specs, Related, Links, FAQs (from brief)
+      - Optional: Writer’s Notes (merged)
+      - Optional: SERP Snapshot summary line items
+    """
+    base_md = brief_to_markdown(brief)
+    parts: List[str] = [base_md]
+
+    # SERP summary (compact bullets)
+    if serp_summary:
+        parts.append("\n".join(_serp_summary_lines(serp_summary)))
+
+    # Writer's notes (rich section)
+    if writer_notes:
+        parts.append("\n".join(_notes_lines(writer_notes)))
+
+    # Closing tip stays last
+    return "\n\n".join([p for p in parts if p and p.strip()])
+

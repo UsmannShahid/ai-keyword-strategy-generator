@@ -19,7 +19,7 @@ from utils import slugify, default_report_name
 from prompt_manager import prompt_manager
 from scoring import add_scores, quickwin_breakdown, explain_quickwin
 from eval_logger import log_eval
-from brief_renderer import brief_to_markdown
+from brief_renderer import brief_to_markdown_full
 from serp_utils import analyze_serp
 from services import generate_writer_notes
 
@@ -265,15 +265,22 @@ def step_header():
 st.markdown("""
 <style>
 section.main .block-container { max-width: 980px; }
+
+/* nicer heading spacing */
+h2 { margin-top: 1.1rem !important; }
+h3 { margin-top: .9rem !important; }
+
+/* keyword/intents badges */
 .k-badge { display:inline-block; padding:2px 8px; border-radius:16px; font-weight:600; font-size:12px; }
 .k-badge--buy { background:#e6ffed; color:#09633b; }
 .k-badge--info { background:#eef2ff; color:#3730a3; }
 .k-badge--brand { background:#fef3c7; color:#92400e; }
 .k-badge--weak { background:#fee2e2; color:#dc2626; }
 .k-badge--strong { background:#d1fae5; color:#059669; }
+
 /* step chips */
 .stepper { display:flex; gap:.5rem; margin:.5rem 0 1rem; }
-.step { padding:.35rem .6rem; border-radius:999px; font-weight:600; 
+.step { padding:.35rem .6rem; border-radius:999px; font-weight:600;
         background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); }
 .step--active { background:rgba(59,130,246,.15); border-color:rgba(59,130,246,.35); color:#93c5fd; }
 .step--done { background:rgba(16,185,129,.15); border-color:rgba(16,185,129,.35); color:#6ee7b7; }
@@ -288,6 +295,7 @@ INTENT_COLORS = {
     "navigational":  "#fde68a",  # amber-ish
     "branded":       "#fce7f3",  # pink-ish
 }
+
 
 def style_intent(s: pd.Series):
     return [f"background-color: {INTENT_COLORS.get(v.lower(), '#f3f4f6')}" for v in s]
@@ -765,7 +773,15 @@ def render_step_3():
         st.markdown("### 📋 Generated Content Brief")
         
         if is_json:
-            md = brief_to_markdown(data)
+            # pull notes + serp summary from session if present
+            writer_notes = st.session_state.get("writer_notes_last")  # set when you generated notes
+            serp_summary = st.session_state.get("serp_data", {}).get("summary")
+
+            md = brief_to_markdown_full(
+                data,
+                writer_notes=writer_notes,
+                serp_summary=serp_summary
+            )
             st.markdown(md)
             
             # Download button
@@ -841,6 +857,10 @@ def render_step_3():
                 _bul(st, "CTA ideas", notes.get("cta_ideas"))
                 _bul(st, "Risk flags", notes.get("risk_flags"))
                 st.markdown(f"**Recommended word count:** {notes.get('recommended_word_count','—')}")
+
+                st.markdown(f"**Recommended word count:** {notes.get('recommended_word_count','—')}")
+    
+                st.session_state["writer_notes_last"] = notes  # stash latest writer notes
 
                 # --- Download as Markdown
                 md_lines = [f"# Writer’s Notes — {keyword}", ""]
