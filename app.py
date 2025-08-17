@@ -9,6 +9,7 @@
 import os
 import json
 from datetime import datetime
+from typing import Optional, List
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
@@ -50,7 +51,7 @@ if "help_open" not in st.session_state:
 if "help_step" not in st.session_state:
     st.session_state.help_step = 1
 
-def _open_help(step: int | None = None):
+def _open_help(step: Optional[int] = None):
     if step is not None:
         st.session_state.help_step = step
     st.session_state.help_open = True
@@ -58,7 +59,7 @@ def _open_help(step: int | None = None):
 def _close_help():
     st.session_state.help_open = False
 
-def _step_tip_popover(lines: list[str]):
+def _step_tip_popover(lines: List[str]):
     with st.popover("Need tips?"):
         for x in lines:
             st.markdown(f"- {x}")
@@ -87,7 +88,7 @@ def _current_step_help():
                 "Audience: `remote workers`  · Country: `US` · Language: `en`"
             ]
         }
-    if step == 2:
+    elif step == 2:
         return {
             "title": "Step 2 — Quick‑Win Keywords",
             "why": [
@@ -449,16 +450,39 @@ def render_step_1():
     available_prompts = list(prompt_options.keys())
     
     if available_prompts:
-        selected_prompt_display = st.selectbox(
-            "Choose your keyword research approach:",
-            options=[prompt_options[key] for key in available_prompts],
-            index=0
-        )
-        # Get the actual prompt key from the display name
-        selected_prompt = next(key for key, display in prompt_options.items() if display == selected_prompt_display)
-    else:
-        selected_prompt = "default_seo"
-        st.info("💡 Using default SEO strategy (prompt files not found)")
+        # Load display names from PromptManager
+        disp_map = prompt_manager.get_prompt_display_names()  # {key: "Pretty Label"}
+        inv_map = {v: k for k, v in disp_map.items()}  # reverse map
+
+        available_prompts = list(disp_map.keys())
+
+        if available_prompts:
+            # Figure out what to show as default in the dropdown
+            current_key = st.session_state.get("selected_prompt", "default_seo")
+            current_label = disp_map.get(current_key, next(iter(disp_map.values())))
+
+            selected_prompt_display = st.selectbox(
+                "Choose your keyword research approach:",
+                options=list(disp_map.values()),
+                index=list(disp_map.values()).index(current_label) if current_label in disp_map.values() else 0,
+            )
+
+            # Store the actual key in session_state
+            selected_prompt = inv_map[selected_prompt_display]
+            st.session_state["selected_prompt"] = selected_prompt
+
+            # Show helper caption under dropdown
+            help_lines = {
+                "🎯 Balanced SEO Strategy": "Good default. Mix of volume + intent.",
+                "🔍 Competitive Analysis": "Look at rivals to find missed gaps.",
+                "🌱 Long-Tail Keywords (Low Volume, High Intent)": "Lower volume but easier wins and clearer intent.",
+                "📈 Trending Searches": "Timely topics with rising interest.",
+            }
+            st.caption(help_lines.get(selected_prompt_display, "Pick a style that fits your niche."))
+
+        else:
+            selected_prompt = "default_seo"
+            st.info("💡 Using default SEO strategy (prompt files not found)")
     
     # Save inputs to session state
     st.session_state.business_desc = business_desc
@@ -514,7 +538,7 @@ def render_step_2():
                 df["Volume"] = pd.Series([1000, 800, 600, 400, 300] * (len(df) // 5 + 1))[:len(df)]
                 
                 if not df.empty:
-                    df = df.sort_values(["priority"]).reset_index(drop=True)
+                    df = df.sort_values(["priority"], ascending=True).reset_index(drop=True)
                     st.session_state.generated_df = df
                     st.success(f"Generated {len(df)} keywords!")
                     
@@ -544,7 +568,9 @@ def render_step_2():
         
         if df is None or df.empty:
             st.info("No keywords found. Try regenerating or going back to adjust inputs.")
-            st.button("← Back", on_click=lambda: setattr(st.session_state, "ux_step", 1))
+            if st.button("← Back"):
+                st.session_state.ux_step = 1
+                st.rerun()
             return
 
         # Normalize types
@@ -574,7 +600,9 @@ def render_step_2():
 
         if fdf.empty:
             st.warning("No rows after filters.")
-            st.button("← Back", on_click=lambda: setattr(st.session_state, "ux_step", 1))
+            if st.button("← Back"):
+                st.session_state.ux_step = 1
+                st.rerun()
             return
 
         # Ensure there is a default pick (top by score, then volume)
@@ -660,8 +688,7 @@ def render_step_2():
         if pick:
             st.success(f"✅ Selected: **{pick}**")
 
-            # 👉 NEW: Explain Quick-Win Score popover
-            from scoring import quickwin_breakdown, explain_quickwin
+            # 👉 Explain Quick-Win Score popover
             try:
                 row = fdf.loc[fdf["Keyword"] == pick].iloc[0].to_dict()
                 bd = quickwin_breakdown(row)
@@ -705,12 +732,16 @@ def render_step_3():
     st.info(f"📝 **Generating brief for:** {keyword}")
     
     # SERP Snapshot
-    country = st.session_state.get("country","US")
-    language = st.session_state.get("language","en")
+    country = st.session_state.get("country", "US")
+    language = st.session_state.get("language", "en")
 
     with st.expander("🔍 SERP Snapshot (top 5)", expanded=True):
         with st.spinner("Fetching SERP…"):
-            serp_raw = fetch_serp_snapshot(keyword or "", country, language) if keyword else []
+            try:
+                serp_raw = fetch_serp_snapshot(keyword or "", country, language) if keyword else []
+            except Exception as e:
+                st.warning(f"Could not fetch SERP data: {e}")
+                serp_raw = []
         serp = analyze_serp(serp_raw)
         s = serp["summary"]
         
@@ -797,9 +828,14 @@ def render_step_3():
             md = brief_to_markdown_full(data, writer_notes=writer_notes, serp_summary=serp_summary)
 
             # --- TABS LAYOUT ---
-            tab_brief, tab_notes, tab_serp, tab_debug = st.tabs(
-                ["📄 Content Brief", "🧠 Writer's Notes", "🔍 SERP Snapshot", "🧪 Debug"]
-            )
+            tab_labels = ["📄 Content Brief", "🧠 Writer’s Notes", "🔍 SERP Snapshot"]
+
+            # Only add Debug tab if dev_mode is enabled
+            if st.session_state.get("dev_mode", False):
+                tab_labels.append("⚙️ Debug (Advanced)")
+
+            tabs = st.tabs(tab_labels)
+            tab_brief, tab_notes, tab_serp, *tab_debug = tabs
 
             # Content Brief tab
             with tab_brief:
@@ -815,9 +851,24 @@ def render_step_3():
             # Writer's Notes tab (generate if missing)
             with tab_notes:
                 st.caption("Add practical guidance for a writer: audience, angle, sections, citations.")
-                wn_variants = (st.session_state.get("writer_notes_variants") 
-                               or ["A", "B"])  # use your prompt_manager if wired
-                wn_variant = st.selectbox("Variant", wn_variants, index=0, key="wn_variant_tab")
+                
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    # Friendly variant mapping for Writer's Notes
+                    variant_map = {"Style 1 – Concise": "A", "Style 2 – Detailed": "B"}
+                    wn_variant_label = st.selectbox(
+                        "✍️ Note Style", 
+                        list(variant_map.keys()), 
+                        key="wn_variant_tab",
+                        help="Concise = quick checklist; Detailed = extended guidance."
+                    )
+                    wn_variant = variant_map[wn_variant_label]
+                with col2:
+                    with st.popover("What's this?"):
+                        st.markdown(
+                            "**Concise** → quick checklist for fast drafting.\n\n"
+                            "**Detailed** → expanded guidance, more examples and sections."
+                        )
 
                 if writer_notes:
                     # simple, tidy render
@@ -908,9 +959,11 @@ def render_step_3():
                         st.rerun()
 
             # Debug tab
-            with tab_debug:
-                st.caption("Use this to troubleshoot prompt outputs.")
-                st.json(data)
+            if st.session_state.get("dev_mode", False) and len(tabs) > 3:
+                with tabs[-1]:
+                    st.caption("⚙️ Raw AI output for troubleshooting (dev use only).")
+                    st.json(data if is_json else {"raw": output})
+
         else:
             # Fallback: show raw output if not JSON
             st.warning("Model returned non-JSON output. Showing raw below:")
