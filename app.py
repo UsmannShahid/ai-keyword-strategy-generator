@@ -13,7 +13,7 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from ui_helpers import render_copy_from_dataframe
-from services import KeywordService, generate_brief_with_variant, fetch_serp_snapshot
+from services import KeywordService, generate_writer_notes, generate_brief_with_variant, fetch_serp_snapshot
 from parsing import SAFE_OUTPUT, parse_brief_output, detect_placeholders
 from utils import slugify, default_report_name
 from prompt_manager import prompt_manager
@@ -21,7 +21,7 @@ from scoring import add_scores, quickwin_breakdown, explain_quickwin
 from eval_logger import log_eval
 from brief_renderer import brief_to_markdown_full
 from serp_utils import analyze_serp
-from services import generate_writer_notes
+
 
 
 # OpenAI SDK (current usage style)
@@ -765,219 +765,231 @@ def render_step_3():
                 return
     
     # Display generated brief
+        
     if "brief_output" in st.session_state:
         output = st.session_state.brief_output
         data, is_json = parse_brief_output(output)
         
         st.markdown("---")
-        st.markdown("### 📋 Generated Content Brief")
         
+        # --- Render result (modern tabs) ---
+        st.subheader("📝 AI Content Brief")
+
+        # you should already have: data, is_json, keyword
+        # ensure we have notes + serp summary from session if available
+        writer_notes = st.session_state.get("writer_notes_last")
+        serp_summary = (st.session_state.get("serp_data") or {}).get("summary")
+
+        # if you don't have SERP in session yet, compute a quick snapshot summary on the fly (safe fallback)
+        if not serp_summary and keyword:
+            try:
+                country = st.session_state.get("country", "US")
+                language = st.session_state.get("language", "en")
+                serp_raw = fetch_serp_snapshot(keyword, country, language)
+                serp = analyze_serp(serp_raw)
+                st.session_state["serp_data"] = serp
+                serp_summary = serp.get("summary")
+            except Exception:
+                serp_summary = None
+
         if is_json:
-            # pull notes + serp summary from session if present
-            writer_notes = st.session_state.get("writer_notes_last")  # set when you generated notes
-            serp_summary = st.session_state.get("serp_data", {}).get("summary")
+            # build full, writer-ready doc (brief + optional notes + serp summary)
+            md = brief_to_markdown_full(data, writer_notes=writer_notes, serp_summary=serp_summary)
 
-            md = brief_to_markdown_full(
-                data,
-                writer_notes=writer_notes,
-                serp_summary=serp_summary
+            # --- TABS LAYOUT ---
+            tab_brief, tab_notes, tab_serp, tab_debug = st.tabs(
+                ["📄 Content Brief", "🧠 Writer's Notes", "🔍 SERP Snapshot", "🧪 Debug"]
             )
-            st.markdown(md)
-            
-            # Download button
-            st.download_button(
-                "⬇️ Download Brief (Markdown)",
-                data=md.encode("utf-8"),
-                file_name=f"{keyword.replace(' ', '-')}__{st.session_state.variant}.md",
-                mime="text/markdown",
-                use_container_width=True,
-            )
-            
-            # Debug info
-            with st.expander("🔧 Debug Info"):
-                st.json(data)
-                if "brief_prompt" in st.session_state:
-                    st.markdown("**Prompt Used:**")
-                    st.code(st.session_state.brief_prompt, language="markdown")
-                if "brief_latency" in st.session_state:
-                    st.caption(f"⏱️ Generated in {st.session_state.brief_latency:.0f}ms")
-        else:
-            st.warning("⚠️ Model returned non-JSON output. Showing raw:")
-            st.markdown(output or "_No output_")
 
-        # Writer Notes
-        st.markdown("---")
-        st.subheader("🧠 Writer’s Notes")
-
-        # Variant selector (re-uses your prompt system)
-        from prompt_manager import prompt_manager as _pm
-        wn_variants = _pm.get_variants("writer_notes") or ["A","B"]
-        wn_variant = st.selectbox("Notes Variant", wn_variants, index=0, key="wn_variant")
-
-        # Generate button
-        if st.button("Generate Writer’s Notes", type="primary", disabled=not keyword):
-            # 1) get the brief dict you already parsed above
-            #    if you named it differently, adjust:
-            brief_dict = data if is_json else {"title": keyword, "outline": {"H2": []}}
-
-            # 2) get the SERP summary if available (from earlier block)
-            serp_summary = locals().get("s") or st.session_state.get("serp_summary")
-
-            with st.spinner("Creating notes…"):
-                notes, ok, prompt_used, usage = generate_writer_notes(
-                    keyword=keyword,
-                    brief_dict=brief_dict,
-                    serp_summary=serp_summary,
-                    variant=wn_variant,
-                )
-
-            if not ok:
-                st.warning("Model did not return valid JSON. Showing raw:")
-                st.code(notes.get("raw", ""), language="json")
-            else:
-                # --- Pretty render
-                def _bul(m, title, items):
-                    items = [str(x).strip() for x in (items or []) if str(x).strip()]
-                    if items:
-                        m.markdown(f"**{title}**")
-                        for it in items:
-                            m.markdown(f"- {it}")
-
-                st.markdown(f"**Audience:** {notes.get('target_audience','—')}  \n"
-                            f"**Intent:** {notes.get('search_intent','—')}  \n"
-                            f"**Primary angle:** {notes.get('primary_angle','—')}")
-                _bul(st, "Writer notes", notes.get("writer_notes"))
-                _bul(st, "Must-cover sections", notes.get("must_cover_sections"))
-                _bul(st, "Entity gaps", notes.get("entity_gaps"))
-                _bul(st, "Data freshness", notes.get("data_freshness"))
-                _bul(st, "Internal link targets", notes.get("internal_link_targets"))
-                _bul(st, "External citations needed", notes.get("external_citations_needed"))
-                _bul(st, "Formatting enhancements", notes.get("formatting_enhancements"))
-                _bul(st, "Tone & style", notes.get("tone_style"))
-                _bul(st, "CTA ideas", notes.get("cta_ideas"))
-                _bul(st, "Risk flags", notes.get("risk_flags"))
-                st.markdown(f"**Recommended word count:** {notes.get('recommended_word_count','—')}")
-
-                st.markdown(f"**Recommended word count:** {notes.get('recommended_word_count','—')}")
-    
-                st.session_state["writer_notes_last"] = notes  # stash latest writer notes
-
-                # --- Download as Markdown
-                md_lines = [f"# Writer’s Notes — {keyword}", ""]
-                for k in ["target_audience","search_intent","primary_angle"]:
-                    md_lines.append(f"**{k.replace('_',' ').title()}:** {notes.get(k,'—')}")
-                md_lines.append("")
-                def _section(title, items):
-                    if items:
-                        md_lines.append(f"## {title}")
-                        md_lines.extend([f"- {x}" for x in items])
-                        md_lines.append("")
-                _section("Writer notes", notes.get("writer_notes"))
-                _section("Must-cover sections", notes.get("must_cover_sections"))
-                _section("Entity gaps", notes.get("entity_gaps"))
-                _section("Data freshness", notes.get("data_freshness"))
-                _section("Internal link targets", notes.get("internal_link_targets"))
-                _section("External citations needed", notes.get("external_citations_needed"))
-                _section("Formatting enhancements", notes.get("formatting_enhancements"))
-                _section("Tone & style", notes.get("tone_style"))
-                _section("CTA ideas", notes.get("cta_ideas"))
-                _section("Risk flags", notes.get("risk_flags"))
-                if rc := notes.get("recommended_word_count"):
-                    md_lines.append(f"**Recommended word count:** {rc}")
-                md_blob = "\n".join(md_lines).strip()
-
+            # Content Brief tab
+            with tab_brief:
+                st.markdown(md)
                 st.download_button(
-                    "⬇️ Download Writer’s Notes (Markdown)",
-                    data=md_blob.encode("utf-8"),
-                    file_name=f"{(keyword or 'notes').replace(' ','-')}__notes_{wn_variant}.md",
+                    "⬇️ Download Brief (Markdown)",
+                    data=md.encode("utf-8"),
+                    file_name=f"{(keyword or 'content-brief').replace(' ', '-') }__{st.session_state.variant}.md",
                     mime="text/markdown",
                     use_container_width=True,
                 )
 
-                with st.expander("Notes JSON (debug)"):
-                    st.json(notes)
+            # Writer's Notes tab (generate if missing)
+            with tab_notes:
+                st.caption("Add practical guidance for a writer: audience, angle, sections, citations.")
+                wn_variants = (st.session_state.get("writer_notes_variants") 
+                               or ["A", "B"])  # use your prompt_manager if wired
+                wn_variant = st.selectbox("Variant", wn_variants, index=0, key="wn_variant_tab")
 
-                # Optional: stash SERP summary in session for logging later
-                st.session_state["serp_summary"] = serp_summary
+                if writer_notes:
+                    # simple, tidy render
+                    st.markdown("**Audience:** " + str(writer_notes.get("target_audience", "—")))
+                    st.markdown("**Intent:** " + str(writer_notes.get("search_intent", "—")))
+                    st.markdown("**Primary angle:** " + str(writer_notes.get("primary_angle", "—")))
+                    for title, key in [
+                        ("Writer notes", "writer_notes"),
+                        ("Must-cover sections", "must_cover_sections"),
+                        ("Entity gaps", "entity_gaps"),
+                        ("Data freshness", "data_freshness"),
+                        ("Internal link targets", "internal_link_targets"),
+                        ("External citations needed", "external_citations_needed"),
+                        ("Formatting enhancements", "formatting_enhancements"),
+                        ("Tone & style", "tone_style"),
+                        ("CTA ideas", "cta_ideas"),
+                        ("Risk flags", "risk_flags"),
+                    ]:
+                        items = writer_notes.get(key) or []
+                        if items:
+                            st.markdown(f"**{title}**")
+                            for it in items:
+                                st.markdown(f"- {it}")
+                    if rc := writer_notes.get("recommended_word_count"):
+                        st.markdown(f"**Recommended word count:** {rc}")
 
-        
+                    # optional: allow re-download just notes
+                    notes_md = "## Writer's Notes\n" + "\n".join(f"- {x}" for x in (writer_notes.get("writer_notes") or []))
+                    st.download_button(
+                        "⬇️ Download Writer's Notes (Markdown)",
+                        data=notes_md.encode("utf-8"),
+                        file_name=f"{(keyword or 'notes').replace(' ','-')}__notes_{wn_variant}.md",
+                        mime="text/markdown",
+                        use_container_width=True,
+                    )
+                else:
+                    # generate inline if not present
+                    if st.button("Generate Writer's Notes", type="primary", use_container_width=True, disabled=not keyword):
+                        with st.spinner("Creating notes…"):
+                            notes, ok, prompt_used, usage = generate_writer_notes(
+                                keyword=keyword,
+                                brief_dict=data,
+                                serp_summary=serp_summary,
+                                variant=wn_variant,
+                            )
+                        if ok:
+                            st.session_state["writer_notes_last"] = notes
+                            st.success("Writer's Notes added to this brief.")
+                            st.rerun()
+                        else:
+                            st.warning("Model did not return valid JSON. Showing raw:")
+                            st.code(notes.get("raw", ""), language="json")
+
+            # SERP Snapshot tab
+            with tab_serp:
+                st.caption("Top results and weak-spot flags help you judge if you can win the SERP.")
+                serp_data = st.session_state.get("serp_data")
+                if not serp_data:
+                    st.info("No SERP data yet.")
+                else:
+                    s = serp_data.get("summary", {})
+                    st.markdown(
+                        f"**Weak spots:** {s.get('weak_any',0)} "
+                        f"(forums: {s.get('weak_forum',0)}, thin: {s.get('weak_thin',0)}, old: {s.get('weak_old',0)})"
+                    )
+                    # list rows if available
+                    for i, r in enumerate(serp_data.get("rows", [])[:5], 1):
+                        tags = []
+                        if r.get("weak_forum"): tags.append("forum")
+                        if r.get("weak_thin"):  tags.append("thin")
+                        if r.get("weak_old"):   tags.append("old")
+                        tag = " · ".join(tags) if tags else "—"
+                        st.markdown(
+                            f"**{i}. {r.get('title','(no title)')}**  \n"
+                            f"<span style='color:gray'>{r.get('domain','')}</span> • weak: <span style='color:#f59e0b'>{tag}</span>  \n"
+                            f"{(r.get('snippet') or '')[:220]}",
+                            unsafe_allow_html=True
+                        )
+                    # refresh SERP
+                    colr1, colr2 = st.columns([1,1])
+                    if colr1.button("🔄 Refresh SERP"):
+                        with st.spinner("Fetching SERP…"):
+                            country = st.session_state.get("country", "US")
+                            language = st.session_state.get("language", "en")
+                            serp_raw = fetch_serp_snapshot(keyword, country, language)
+                            serp = analyze_serp(serp_raw)
+                            st.session_state["serp_data"] = serp
+                        st.rerun()
+
+            # Debug tab
+            with tab_debug:
+                st.caption("Use this to troubleshoot prompt outputs.")
+                st.json(data)
+        else:
+            # Fallback: show raw output if not JSON
+            st.warning("Model returned non-JSON output. Showing raw below:")
+            st.markdown(output or "_No output_")
+
         # Feedback section
         st.markdown("---")
         st.markdown("### 💭 How was this brief?")
         rating = st.slider("Rating (1=poor, 5=excellent)", min_value=1, max_value=5, value=4)
         notes = st.text_area("Optional feedback (what was good/bad?)", placeholder="e.g., missing competitor analysis, great structure...")
 
-    # Button to save feedback
+        # Button to save feedback
+        if st.button("💾 Save Feedback"):
+            # --- Safe pulls from session ---
+            brief_prompt   = st.session_state.get("brief_prompt", "")
+            brief_latency  = float(st.session_state.get("brief_latency", 0) or 0)
+            brief_usage    = st.session_state.get("brief_usage") or {}
+            tokens_prompt  = brief_usage.get("prompt_tokens")
+            tokens_comp    = brief_usage.get("completion_tokens")
 
-    if st.button("💾 Save Feedback"):
-        # --- Safe pulls from session ---
-        brief_prompt   = st.session_state.get("brief_prompt", "")
-        brief_latency  = float(st.session_state.get("brief_latency", 0) or 0)
-        brief_usage    = st.session_state.get("brief_usage") or {}
-        tokens_prompt  = brief_usage.get("prompt_tokens")
-        tokens_comp    = brief_usage.get("completion_tokens")
+            # Optional quality signals
+            checklist      = st.session_state.get("quality_checklist")   # dict or None
+            auto_flags     = st.session_state.get("brief_auto_flags")    # list or None
+            is_json        = st.session_state.get("brief_is_json")       # bool or None
 
-        # Optional quality signals
-        checklist      = st.session_state.get("quality_checklist")   # dict or None
-        auto_flags     = st.session_state.get("brief_auto_flags")    # list or None
-        is_json        = st.session_state.get("brief_is_json")       # bool or None
+            # SERP summary if available
+            serp_summary = None
+            if st.session_state.get("show_serp") and keyword:
+                serp_state = st.session_state.get("serp_data") or {}
+                serp_summary = serp_state.get("summary")
 
-        # SERP summary if available
-        serp_summary = None
-        if st.session_state.get("show_serp") and keyword:
-            serp_state = st.session_state.get("serp_data") or {}
-            serp_summary = serp_state.get("summary")
+            # 👉 NEW: Quick-Win breakdown for the selected keyword (if we can find the row)
+            qw_breakdown = None
+            qw_expl      = None
+            try:
+                df_all = st.session_state.get("generated_df")
+                sel_kw = st.session_state.get("selected_keyword") or st.session_state.get("kw_pick_select")
+                if df_all is not None and sel_kw:
+                    # locate the row by keyword (case-insensitive, safe)
+                    row_match = df_all.loc[df_all["Keyword"].str.lower() == str(sel_kw).lower()]
+                    if not row_match.empty:
+                        bd = quickwin_breakdown(row_match.iloc[0].to_dict())
+                        qw_breakdown = bd
+                        qw_expl = explain_quickwin(bd)
+            except Exception as e:
+                # don't fail logging if breakdown fails
+                qw_breakdown = {"error": str(e)}
+                qw_expl = None
 
-        # 👉 NEW: Quick-Win breakdown for the selected keyword (if we can find the row)
-        qw_breakdown = None
-        qw_expl      = None
-        try:
-            df_all = st.session_state.get("generated_df")
-            sel_kw = st.session_state.get("selected_keyword") or st.session_state.get("kw_pick_select")
-            if df_all is not None and sel_kw:
-                # locate the row by keyword (case-insensitive, safe)
-                row_match = df_all.loc[df_all["Keyword"].str.lower() == str(sel_kw).lower()]
-                if not row_match.empty:
-                    bd = quickwin_breakdown(row_match.iloc[0].to_dict())
-                    qw_breakdown = bd
-                    qw_expl = explain_quickwin(bd)
-        except Exception as e:
-            # don't fail logging if breakdown fails
-            qw_breakdown = {"error": str(e)}
-            qw_expl = None
+            # Build extra payload
+            extra_payload = {
+                "app_version": "beta-mvp",
+                "type": "content_brief",
+                "is_json": bool(is_json) if is_json is not None else None,
+                "auto_flags": auto_flags or [],
+                "checklist": checklist or {},
+                "serp_summary": serp_summary,
+                "quickwin_breakdown": qw_breakdown,
+                "quickwin_explanation": qw_expl,
+                "output_chars": len(output or ""),
+            }
 
-        # Build extra payload
-        extra_payload = {
-            "app_version": "beta-mvp",
-            "type": "content_brief",
-            "is_json": bool(is_json) if is_json is not None else None,
-            "auto_flags": auto_flags or [],
-            "checklist": checklist or {},
-            "serp_summary": serp_summary,
-            "quickwin_breakdown": qw_breakdown,
-            "quickwin_explanation": qw_expl,
-            "output_chars": len(output or ""),
-        }
+            # Log the evaluation
+            log_eval(
+                variant=st.session_state.variant,
+                keyword=keyword or "",
+                prompt=brief_prompt,
+                output=output or "",
+                latency_ms=brief_latency,
+                tokens_prompt=tokens_prompt,
+                tokens_completion=tokens_comp,
+                user_rating=rating,
+                user_notes=notes,
+                extra=extra_payload,
+            )
 
-        # Log the evaluation
-        log_eval(
-            variant=st.session_state.variant,
-            keyword=keyword or "",
-            prompt=brief_prompt,
-            output=output or "",
-            latency_ms=brief_latency,
-            tokens_prompt=tokens_prompt,
-            tokens_completion=tokens_comp,
-            user_rating=rating,
-            user_notes=notes,
-            extra=extra_payload,
-        )
+            st.success("✅ Feedback saved! This helps improve the AI prompts.")
+            st.toast("Saved to evals.jsonl")
 
-        st.success("✅ Feedback saved! This helps improve the AI prompts.")
-        st.toast("Saved to evals.jsonl")
-
-
-    
     # Navigation buttons
     st.divider()
     col1, col2 = st.columns([1,1])
