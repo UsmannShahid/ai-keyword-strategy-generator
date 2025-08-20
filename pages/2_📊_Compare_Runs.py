@@ -206,7 +206,7 @@ def main():
             labels = [f"{bins[i]}–{bins[i+1]-1}" for i in range(len(bins)-1)]
             hist_df["len_bucket"] = pd.cut(hist_df["output_chars"], bins=bins, labels=labels, include_lowest=True)
 
-            bucket_counts = hist_df.groupby("len_bucket").size().reset_index(name="runs")
+            bucket_counts = hist_df.groupby("len_bucket", observed=False).size().reset_index(name="runs")
             bucket_counts = bucket_counts.sort_values(by="len_bucket", ascending=True)
 
             st.bar_chart(bucket_counts, x="len_bucket", y="runs", use_container_width=True)

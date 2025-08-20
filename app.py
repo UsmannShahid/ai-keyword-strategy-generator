@@ -22,12 +22,15 @@ from scoring import add_scores, quickwin_breakdown, explain_quickwin
 from eval_logger import log_eval
 from brief_renderer import brief_to_markdown_full
 from serp_utils import analyze_serp
-from eval_logger import log_eval
+import json, time
 
 
 
 # OpenAI SDK (current usage style)
 # pip install --upgrade openai
+# -----------------------------
+# GLOBAL UI CONFIG & STATE INIT
+# -----------------------------
 from openai import OpenAI
 
 # --- GLOBAL UX: hero + state ---
@@ -51,6 +54,9 @@ if "help_open" not in st.session_state:
     st.session_state.help_open = False
 if "help_step" not in st.session_state:
     st.session_state.help_step = 1
+# -----------------------------
+# HELPER FUNCTIONS (UI + LOGIC)
+# -----------------------------
 
 def _open_help(step: Optional[int] = None):
     if step is not None:
@@ -76,6 +82,58 @@ def _render_notes_section(title: str, items, why: str | None = None):
     for it in items:
         st.markdown(f"- {it}")
 
+import json, time
+from eval_logger import log_eval
+
+def _auto_log_brief(*, keyword: str, variant: str, prompt: str, brief_dict: dict,
+                    usage: dict | None, latency_ms: float, serp_summary: dict | None,
+                    auto_flags: dict | None = None):
+    """Log every generated brief to evals.jsonl (no user action needed)."""
+    tokens_prompt  = (usage or {}).get("prompt_tokens")
+    tokens_comp    = (usage or {}).get("completion_tokens")
+    output_chars   = len(json.dumps(brief_dict, ensure_ascii=False))
+    extra_payload = {
+        "type": "content_brief",
+        "app_version": "beta-mvp",
+        "is_json": True,
+        "output_chars": output_chars,
+        "auto_flags": auto_flags or {},
+        "serp_summary": serp_summary,
+    }
+    log_eval(
+        variant=variant,
+        keyword=keyword or "",
+        prompt=prompt or "",
+        output=json.dumps(brief_dict, ensure_ascii=False),
+        latency_ms=latency_ms,
+        tokens_prompt=tokens_prompt,
+        tokens_completion=tokens_comp,
+        user_rating=None,
+        user_notes=None,
+        extra=extra_payload,
+    )
+
+def _brief_auto_flags(brief: dict) -> dict:
+    """Simple heuristics so we can analyze quality over time."""
+    flags = {}
+    text = json.dumps(brief, ensure_ascii=False)
+    flags["short_output"] = len(text) < 800
+    flags["missing_title"] = not bool(brief.get("title"))
+    meta = (brief.get("meta_description") or "").strip()
+    flags["missing_meta"] = len(meta) < 40
+    outline = brief.get("outline") or {}
+    h2 = outline.get("H2") or outline.get("h2") or []
+    flags["low_sections"] = (isinstance(h2, list) and len(h2) < 4)
+    # placeholder sniff
+    placeholders = ["Chair Name #", "Product #", "Section #", "TBD", "Lorem"]
+    flags["has_placeholders"] = any(p.lower() in text.lower() for p in placeholders)
+    return flags
+
+
+
+# -----------------------------
+# NAVIGATION & EVENT HANDLERS
+# -----------------------------
 
 def _current_step_help():
     step = st.session_state.get("help_step", 1)
@@ -84,6 +142,9 @@ def _current_step_help():
         return {
             "title": "Step 1 — Inputs",
             "why": [
+# -----------------------------
+# SVG ICONS & HEADER UI
+# -----------------------------
                 "Clear inputs → better keyword discovery & intent match.",
                 "Country/language alignment avoids chasing irrelevant SERPs."
             ],
@@ -814,6 +875,35 @@ def render_step_3():
         output = st.session_state.brief_output
         data, is_json = parse_brief_output(output)
         
+        # Auto-log the brief immediately after successful parsing
+        if is_json:
+            # Measure latency if you can (surround your model call with time.time())
+            latency_ms = float(st.session_state.get("brief_latency", 0) or 0)
+            usage = st.session_state.get("brief_usage") or {}
+
+            # Flags + SERP
+            auto_flags = _brief_auto_flags(data)
+            serp_summary = (st.session_state.get("serp_data") or {}).get("summary")
+
+            # Auto-log the brief
+            try:
+                _auto_log_brief(
+                    keyword=keyword,
+                    variant=st.session_state.get("variant", "A"),  # your current prompt variant key
+                    prompt=st.session_state.get("brief_prompt", ""),  # save what we sent
+                    brief_dict=data,
+                    usage=usage,
+                    latency_ms=latency_ms,
+                    serp_summary=serp_summary,
+                    auto_flags=auto_flags,
+                )
+                # Optional: toast only in dev mode
+                if st.session_state.get("dev_mode"):
+                    st.toast("Auto-logged brief ✔")
+            except Exception as e:
+                if st.session_state.get("dev_mode"):
+                    st.caption(f"_Auto-log skipped: {e}_")
+        
         st.markdown("---")
         
         # --- Render result (modern tabs) ---
@@ -862,7 +952,7 @@ def render_step_3():
                 )
 
             # Writer's Notes tab (generate if missing)
-            # Writer's Notes tab (generate if missing)
+            
             with tab_notes:
                 st.caption("Add practical guidance for a writer: audience, angle, sections, citations.")
 
