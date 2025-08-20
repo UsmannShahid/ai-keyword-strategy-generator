@@ -64,6 +64,18 @@ def _step_tip_popover(lines: List[str]):
         for x in lines:
             st.markdown(f"- {x}")
 
+def _render_notes_section(title: str, items, why: str | None = None):
+    """Render a notes section with an optional 'why this matters' line."""
+    items = [str(x).strip() for x in (items or []) if str(x).strip()]
+    if not items and not why:
+        return
+    st.markdown(f"**{title}**")
+    if why:
+        st.caption(why)
+    for it in items:
+        st.markdown(f"- {it}")
+
+
 def _current_step_help():
     step = st.session_state.get("help_step", 1)
     kw = st.session_state.get("selected_keyword") or st.session_state.get("seed_input") or "your topic"
@@ -849,54 +861,69 @@ def render_step_3():
                 )
 
             # Writer's Notes tab (generate if missing)
+            # Writer's Notes tab (generate if missing)
             with tab_notes:
                 st.caption("Add practical guidance for a writer: audience, angle, sections, citations.")
-                
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    # Friendly variant mapping for Writer's Notes
-                    variant_map = {"Style 1 – Concise": "A", "Style 2 – Detailed": "B"}
-                    wn_variant_label = st.selectbox(
-                        "✍️ Note Style", 
-                        list(variant_map.keys()), 
-                        key="wn_variant_tab",
-                        help="Concise = quick checklist; Detailed = extended guidance."
+
+                # ✅ Friendly labels instead of A/B, mapped back internally
+                variant_label_map = {
+                    "✍️ Concise Notes (Quick Checklist)": "A",
+                    "📖 Detailed Notes (Step-by-Step)": "B",
+                }
+                wn_variant_label = st.selectbox(
+                    "✍️ Note Style",
+                    list(variant_label_map.keys()),
+                    index=0,
+                    key="wn_variant_tab",
+                    help="Choose how detailed you want the writing guidance to be."
+                )
+                wn_variant = variant_label_map[wn_variant_label]
+
+                # Tiny explainer popover
+                with st.popover("What’s this?"):
+                    st.markdown(
+                        "**Concise:** quick checklist to speed drafting.\n\n"
+                        "**Detailed:** step-by-step guidance with more examples and sections."
                     )
-                    wn_variant = variant_map[wn_variant_label]
-                with col2:
-                    with st.popover("What's this?"):
-                        st.markdown(
-                            "**Concise** → quick checklist for fast drafting.\n\n"
-                            "**Detailed** → expanded guidance, more examples and sections."
-                        )
 
                 if writer_notes:
-                    # simple, tidy render
+                    # Header trio
                     st.markdown("**Audience:** " + str(writer_notes.get("target_audience", "—")))
                     st.markdown("**Intent:** " + str(writer_notes.get("search_intent", "—")))
                     st.markdown("**Primary angle:** " + str(writer_notes.get("primary_angle", "—")))
-                    for title, key in [
-                        ("Writer notes", "writer_notes"),
-                        ("Must-cover sections", "must_cover_sections"),
-                        ("Entity gaps", "entity_gaps"),
-                        ("Data freshness", "data_freshness"),
-                        ("Internal link targets", "internal_link_targets"),
-                        ("External citations needed", "external_citations_needed"),
-                        ("Formatting enhancements", "formatting_enhancements"),
-                        ("Tone & style", "tone_style"),
-                        ("CTA ideas", "cta_ideas"),
-                        ("Risk flags", "risk_flags"),
-                    ]:
-                        items = writer_notes.get(key) or []
-                        if items:
-                            st.markdown(f"**{title}**")
-                            for it in items:
-                                st.markdown(f"- {it}")
+
+                    # ✅ Clear “why this matters” per section
+                    why_map = {
+                        "Writer notes": "Practical guidance for how to structure and write the article.",
+                        "Must-cover sections": "Essential H2/H3s to satisfy search intent and cover the topic fully.",
+                        "Entity gaps": "Topics or terms competitors forgot — covering these helps you win.",
+                        "Data freshness": "Keeps your article up-to-date; cite 2024–2025 sources where possible.",
+                        "Internal link targets": "Pages on your site to link to for SEO and user flow.",
+                        "External citations needed": "Authoritative sources to build trust and E‑E‑A‑T.",
+                        "Formatting enhancements": "Layouts (tables, checklists, schema) that improve readability and rankings.",
+                        "Tone & style": "How the article should sound to match your brand and audience.",
+                        "CTA ideas": "Prompts that nudge readers to the next step (signup, compare, contact).",
+                        "Risk flags": "YMYL/legal/medical caveats to keep content safe and compliant.",
+                    }
+
+                    _render_notes_section("Writer notes", writer_notes.get("writer_notes"), why_map["Writer notes"])
+                    _render_notes_section("Must-cover sections", writer_notes.get("must_cover_sections"), why_map["Must-cover sections"])
+                    _render_notes_section("Entity gaps", writer_notes.get("entity_gaps"), why_map["Entity gaps"])
+                    _render_notes_section("Data freshness", writer_notes.get("data_freshness"), why_map["Data freshness"])
+                    _render_notes_section("Internal link targets", writer_notes.get("internal_link_targets"), why_map["Internal link targets"])
+                    _render_notes_section("External citations needed", writer_notes.get("external_citations_needed"), why_map["External citations needed"])
+                    _render_notes_section("Formatting enhancements", writer_notes.get("formatting_enhancements"), why_map["Formatting enhancements"])
+                    _render_notes_section("Tone & style", writer_notes.get("tone_style"), why_map["Tone & style"])
+                    _render_notes_section("CTA ideas", writer_notes.get("cta_ideas"), why_map["CTA ideas"])
+                    _render_notes_section("Risk flags", writer_notes.get("risk_flags"), why_map["Risk flags"])
+
                     if rc := writer_notes.get("recommended_word_count"):
                         st.markdown(f"**Recommended word count:** {rc}")
 
-                    # optional: allow re-download just notes
-                    notes_md = "## Writer's Notes\n" + "\n".join(f"- {x}" for x in (writer_notes.get("writer_notes") or []))
+                    # Download notes-only (still uses mapped A/B internally for filename)
+                    notes_md = "## Writer's Notes\n" + "\n".join(
+                        f"- {x}" for x in (writer_notes.get("writer_notes") or [])
+                    )
                     st.download_button(
                         "⬇️ Download Writer's Notes (Markdown)",
                         data=notes_md.encode("utf-8"),
@@ -904,15 +931,16 @@ def render_step_3():
                         mime="text/markdown",
                         use_container_width=True,
                     )
+
                 else:
-                    # generate inline if not present
+                    # Generate inline if not present
                     if st.button("Generate Writer's Notes", type="primary", use_container_width=True, disabled=not keyword):
                         with st.spinner("Creating notes…"):
                             notes, ok, prompt_used, usage = generate_writer_notes(
                                 keyword=keyword,
                                 brief_dict=data,
                                 serp_summary=serp_summary,
-                                variant=wn_variant,
+                                variant=wn_variant,  # mapped "A"/"B"
                             )
                         if ok:
                             st.session_state["writer_notes_last"] = notes
@@ -921,6 +949,7 @@ def render_step_3():
                         else:
                             st.warning("Model did not return valid JSON. Showing raw:")
                             st.code(notes.get("raw", ""), language="json")
+
 
             # SERP Snapshot tab
             with tab_serp:
