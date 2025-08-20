@@ -61,23 +61,21 @@ class PromptManager:
     # -------------------------------------------------------------------
 
     def get_prompt_display_names(self) -> Dict[str, str]:
-        """Get mapping of prompt keys to display-friendly names."""
-        display_names = {
-            'default_seo': '🎯 Default SEO Strategy',
-            'competitive_analysis': '🔍 Competitive Analysis',
+        """
+        Returns human-friendly labels for prompt templates.
+        Maps internal keys to display names used in the UI.
+        """
+        return {
+            "default_seo": "🎯 Balanced SEO Strategy",
+            "competitive_analysis": "🔍 Competitive Analysis",
+            "long_tail_focus": "🌱 Long-Tail Keywords (Low Volume, High Intent)",
+            "trend_hunting": "📈 Trending Searches",
+            "local_seo": "📍 Local SEO Focus",
+            "buyer_intent": "💰 High Buyer Intent",
+            "content_gaps": "🔍 Content Gap Analysis",
+            "seasonal_trending": "🌟 Seasonal & Trending",
         }
-        
-        for prompt_name in self._prompts_cache.keys():
-            if prompt_name not in display_names:
-                base, variant = self._split_base_and_variant(prompt_name)
-                if variant:
-                    base_title = base.replace('_', ' ').title()
-                    display_names[prompt_name] = f"🧪 {base_title} – Variant {variant}"
-                else:
-                    display_name = base.replace('_', ' ').title()
-                    display_names[prompt_name] = f"📝 {display_name}"
-        
-        return display_names
+
     
     def get_prompt(self, prompt_name: str) -> str:
         """

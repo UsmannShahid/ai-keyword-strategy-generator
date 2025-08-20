@@ -7,7 +7,7 @@ Usage:
 """
 
 from __future__ import annotations
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 
 
@@ -123,9 +123,9 @@ def brief_to_markdown(brief: Dict[str, Any]) -> str:
 
 def _plain_english_explainer(
     keyword: str,
-    intent: str | None,
-    serp_summary: Dict[str, Any] | None,
-    writer_notes: Dict[str, Any] | None,
+    intent: Optional[str],
+    serp_summary: Optional[Dict[str, Any]],
+    writer_notes: Optional[Dict[str, Any]],
 ) -> str:
     """
     Build a short, encouraging explanation for non-SEO users:
@@ -150,12 +150,12 @@ def _plain_english_explainer(
 
     intent_phrase = ""
     if intent:
-        il = str(intent).lower()
-        if "transact" in il or "buyer" in il:
+        intent_lower = str(intent).lower()
+        if "transact" in intent_lower or "buyer" in intent_lower:
             intent_phrase = "Searchers likely want to compare options or buy."
-        elif "info" in il:
+        elif "info" in intent_lower:
             intent_phrase = "Searchers want clear, helpful information."
-        elif "navig" in il or "brand" in il:
+        elif "navig" in intent_lower or "brand" in intent_lower:
             intent_phrase = "Searchers may be looking for a specific brand/page."
 
     reasons = []
@@ -168,13 +168,16 @@ def _plain_english_explainer(
 
     # Next steps (pull from writer notes if available, otherwise sensible defaults)
     wn = writer_notes or {}
-    next_steps: list[str] = []
+    next_steps: List[str] = []
 
     # prefer real writer_notes bullets if present
-    for b in (wn.get("writer_notes") or []):
-        if len(next_steps) >= 4: break
+    writer_notes_list = wn.get("writer_notes") or []
+    for b in writer_notes_list:
+        if len(next_steps) >= 4: 
+            break
         b = str(b).strip()
-        if b: next_steps.append(b)
+        if b: 
+            next_steps.append(b)
 
     # if we didn't have enough, pad with generic but helpful steps
     if len(next_steps) < 3:
@@ -216,11 +219,14 @@ def _notes_lines(notes: Dict[str, Any]) -> List[str]:
 
     # header trio
     hdr_bits = []
-    if notes.get("target_audience"): hdr_bits.append(f"**Audience:** {notes['target_audience']}")
-    if notes.get("search_intent"):   hdr_bits.append(f"**Intent:** {notes['search_intent']}")
-    if notes.get("primary_angle"):   hdr_bits.append(f"**Primary angle:** {notes['primary_angle']}")
+    if notes.get("target_audience"): 
+        hdr_bits.append(f"**Audience:** {notes['target_audience']}")
+    if notes.get("search_intent"):   
+        hdr_bits.append(f"**Intent:** {notes['search_intent']}")
+    if notes.get("primary_angle"):   
+        hdr_bits.append(f"**Primary angle:** {notes['primary_angle']}")
     if hdr_bits:
-        lines.append("## 🧠 Writer’s Notes — Overview")
+        lines.append("## 🧠 Writer's Notes — Overview")
         lines.append("  \n".join(hdr_bits))
         lines.append("")
 
@@ -243,7 +249,7 @@ def _notes_lines(notes: Dict[str, Any]) -> List[str]:
 def _serp_summary_lines(serp_summary: Dict[str, Any]) -> List[str]:
     if not isinstance(serp_summary, dict):
         return []
-    s = serp_summary or {}
+    s = serp_summary
     bits = []
     bits.append(f"- Weak spots total: **{s.get('weak_any', 0)}**")
     bits.append(f"- Forums: **{s.get('weak_forum', 0)}**, Thin: **{s.get('weak_thin', 0)}**, Old: **{s.get('weak_old', 0)}**")

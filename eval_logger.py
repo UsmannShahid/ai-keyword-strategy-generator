@@ -32,6 +32,7 @@ def log_eval(
         "variant": variant,
         "keyword": keyword,
         "prompt": prompt,
+        "output": output,  # Add missing output field
         "latency_ms": round(latency_ms, 1),
         "tokens_prompt": tokens_prompt,
         "tokens_completion": tokens_completion,
