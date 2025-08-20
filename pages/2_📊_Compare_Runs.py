@@ -114,6 +114,55 @@ def main():
     fdf = df.loc[filt].copy()
     st.write(f"Showing **{len(fdf)}** of {len(df)} runs.")
 
+    # ---- Export (filtered) as CSV ----
+    csv_bytes = fdf.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "⬇️ Export filtered runs (CSV)",
+        data=csv_bytes,
+        file_name="eval_runs_filtered.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+    # ---- Variant performance table (by type & variant) ----
+    perf_cols = []
+    for c in ["type","variant","user_rating","output_chars","has_rating"]:
+        if c in fdf.columns:
+            perf_cols.append(c)
+
+    if {"type","variant"}.issubset(fdf.columns):
+        perf = (
+            fdf[perf_cols]
+            .assign(
+                output_chars=pd.to_numeric(fdf.get("output_chars", pd.Series(dtype=float)), errors="coerce"),
+                user_rating=pd.to_numeric(fdf.get("user_rating", pd.Series(dtype=float)), errors="coerce"),
+                has_rating=fdf.get("has_rating", False),
+            )
+            .groupby(["type","variant"], dropna=False)
+            .agg(
+                runs=("variant","count"),
+                avg_chars=("output_chars","mean"),
+                rated=("has_rating","sum"),
+                avg_rating=("user_rating","mean"),
+            )
+            .reset_index()
+        )
+
+        # tidy numbers
+        if "avg_chars" in perf.columns:
+            perf["avg_chars"] = perf["avg_chars"].fillna(0).round(0).astype(int)
+        if "avg_rating" in perf.columns:
+            perf["avg_rating"] = perf["avg_rating"].round(2)
+        if "runs" in perf.columns and "rated" in perf.columns:
+            perf["% rated"] = ((perf["rated"] / perf["runs"]).fillna(0) * 100).round(1)
+
+        st.subheader("📈 Variant performance (by type & variant)")
+        st.dataframe(perf[["type","variant","runs","avg_chars","% rated","avg_rating"]], use_container_width=True)
+    else:
+        st.info("Variant performance will appear after you have runs with type and variant.")
+
+
+
     # --- Topline metrics ---
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Avg Output Length", f"{int(fdf['output_chars'].dropna().mean()) if 'output_chars' in fdf else 0} chars")
