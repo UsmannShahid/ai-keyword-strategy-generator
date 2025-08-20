@@ -22,6 +22,7 @@ from scoring import add_scores, quickwin_breakdown, explain_quickwin
 from eval_logger import log_eval
 from brief_renderer import brief_to_markdown_full
 from serp_utils import analyze_serp
+from eval_logger import log_eval
 
 
 
@@ -937,18 +938,56 @@ def render_step_3():
                     if st.button("Generate Writer's Notes", type="primary", use_container_width=True, disabled=not keyword):
                         with st.spinner("Creating notes…"):
                             notes, ok, prompt_used, usage = generate_writer_notes(
-                                keyword=keyword,
-                                brief_dict=data,
-                                serp_summary=serp_summary,
-                                variant=wn_variant,  # mapped "A"/"B"
-                            )
+                            keyword=keyword,
+                            brief_dict=data,
+                            serp_summary=serp_summary,
+                            variant=wn_variant,  # mapped "A"/"B"
+                        )
+
                         if ok:
                             st.session_state["writer_notes_last"] = notes
                             st.success("Writer's Notes added to this brief.")
+
+                            # 🔎 Log this generation for A/B analysis
+                            try:
+                                # usage may be None depending on your llm_client mock/real calls
+                                tokens_prompt  = (usage or {}).get("prompt_tokens")
+                                tokens_comp    = (usage or {}).get("completion_tokens")
+
+                                # quick stats for dashboards
+                                notes_stats = {
+                                    "bullets": len(notes.get("writer_notes") or []),
+                                    "must_sections": len(notes.get("must_cover_sections") or []),
+                                    "entities": len(notes.get("entity_gaps") or []),
+                                }
+
+                                log_eval(
+                                    variant=wn_variant,                 # "A" or "B"
+                                    keyword=keyword or "",
+                                    prompt=prompt_used or "",
+                                    output=json.dumps(notes, ensure_ascii=False),
+                                    latency_ms=0,                       # plug actual latency if you measure it
+                                    tokens_prompt=tokens_prompt,
+                                    tokens_completion=tokens_comp,
+                                    user_rating=None,                   # rating happens separately
+                                    user_notes=None,
+                                    extra={
+                                        "type": "writer_notes",
+                                        "writer_notes_style_label": wn_variant_label,   # "Concise"/"Detailed"
+                                        "writer_notes_variant": wn_variant,             # "A"/"B"
+                                        "serp_summary": serp_summary,
+                                        "notes_stats": notes_stats,
+                                        "app_version": "beta-mvp",
+                                    },
+                                )
+                            except Exception as e:
+                                st.caption(f"_Note: logging skipped ({e})._")
+
                             st.rerun()
                         else:
                             st.warning("Model did not return valid JSON. Showing raw:")
                             st.code(notes.get("raw", ""), language="json")
+
 
 
             # SERP Snapshot tab
