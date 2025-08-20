@@ -148,6 +148,72 @@ def main():
             .reset_index()
         )
 
+        st.subheader("📊 Variant comparison (chart)")
+
+        # Bar Chart - Avg rating (fallback to length)
+
+        metric_choice = st.selectbox(
+            "Metric",
+            ["Average rating", "Average output length (chars)"],
+            index=0,
+            help="Switch the metric to compare variants."
+        )
+
+        if {"type","variant"}.issubset(fdf.columns):
+            chart_df = (
+                fdf.assign(
+                    user_rating=pd.to_numeric(fdf.get("user_rating", pd.Series(dtype=float)), errors="coerce"),
+                    output_chars=pd.to_numeric(fdf.get("output_chars", pd.Series(dtype=float)), errors="coerce"),
+                )
+                .groupby(["type","variant"], dropna=False)
+                .agg(
+                    avg_rating=("user_rating","mean"),
+                    avg_chars=("output_chars","mean"),
+                    runs=("variant","count"),
+                )
+                .reset_index()
+            )
+
+            if metric_choice == "Average rating":
+                ycol = "avg_rating"
+                st.caption("Bars show average user rating per type/variant (filtered).")
+            else:
+                ycol = "avg_chars"
+                st.caption("Bars show average output length per type/variant (filtered).")
+
+            # Replace NaN with 0 to avoid rendering issues
+            chart_df[ycol] = chart_df[ycol].fillna(0)
+
+            st.bar_chart(
+                data=chart_df,
+                x="variant",
+                y=ycol,
+                color="type",
+                use_container_width=True,
+            )
+        else:
+            st.info("Charts will appear after you have runs with type and variant.")
+
+
+        # Histogram -- Output length distribution
+        st.subheader("🧮 Output length distribution")
+
+        if "output_chars" in fdf.columns:
+            hist_df = fdf.copy()
+            hist_df["output_chars"] = pd.to_numeric(hist_df["output_chars"], errors="coerce").fillna(0).clip(lower=0)
+            # Bucket into ranges for readability
+            bins = [0, 500, 1000, 1500, 2000, 3000, 5000, 8000, 12000]
+            labels = [f"{bins[i]}–{bins[i+1]-1}" for i in range(len(bins)-1)]
+            hist_df["len_bucket"] = pd.cut(hist_df["output_chars"], bins=bins, labels=labels, include_lowest=True)
+
+            bucket_counts = hist_df.groupby("len_bucket").size().reset_index(name="runs")
+            bucket_counts = bucket_counts.sort_values(by="len_bucket", ascending=True)
+
+            st.bar_chart(bucket_counts, x="len_bucket", y="runs", use_container_width=True)
+        else:
+            st.info("No output length data to chart.")
+
+
         # tidy numbers
         if "avg_chars" in perf.columns:
             perf["avg_chars"] = perf["avg_chars"].fillna(0).round(0).astype(int)
