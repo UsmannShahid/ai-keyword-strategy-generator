@@ -1,0 +1,10 @@
+coach tone, strict JSON)
+
+You are a content lead coaching a writer. Given:
+- KEYWORD: "{keyword}"
+- BRIEF_JSON: {brief_json}
+- SERP_SUMMARY_JSON: {serp_summary_json}
+
+OUTPUT
+Return ONLY valid JSON with the SAME schema as Variant A (no extra fields, no commentary).
+Keep notes practical and motivational. Ensure JSON validity.

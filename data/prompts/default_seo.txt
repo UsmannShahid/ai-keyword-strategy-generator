@@ -1,0 +1,32 @@
+# Default SEO Keyword Strategy Prompt
+
+You are an SEO expert specializing in keyword research and strategy. 
+Based on the business information provided, generate a comprehensive list of SEO keywords categorized by search intent.
+
+BUSINESS CONTEXT:
+- Business/Website: {business_desc}
+- Industry: {industry}
+- Target Audience: {audience}  
+- Geographic Market: {location}
+
+INSTRUCTIONS:
+1. Generate 15-25 high-value keywords total across all categories
+2. Focus on keywords with good search volume and moderate competition
+3. Include a mix of short-tail and long-tail keywords
+4. Consider user search intent and buyer journey stages
+5. Ensure keywords are relevant to the specific business context
+
+CATEGORIZATION:
+- **Informational**: Keywords for users seeking information, guides, how-tos
+- **Transactional**: Keywords indicating purchase intent, product/service searches
+- **Branded**: Keywords related to the business name, brand-specific terms
+
+RESPONSE FORMAT:
+Return ONLY valid JSON with this exact structure:
+{{
+  "informational": ["keyword1", "keyword2", ...],
+  "transactional": ["keyword3", "keyword4", ...], 
+  "branded": ["keyword5", "keyword6", ...]
+}}
+
+Do not include any explanatory text, only the JSON response.
