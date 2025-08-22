@@ -41,8 +41,7 @@ st.set_page_config(page_title="Keyword Quick Wins + AI Brief", page_icon="✨", 
 
 # Initialize centralized state management
 # This replaces all the individual session state initializations
-
-# State manager is imported above and will initialize all session state variables
+state_manager._initialize_state()  # Ensure state is initialized when app runs
 
 def _open_help(step: Optional[int] = None):
     state_manager.open_help(step)
