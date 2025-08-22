@@ -17,7 +17,7 @@ from ..utils.brief_renderer import brief_to_markdown_full
 from ..utils.serp_utils import analyze_serp
 from ..utils.eval_logger import log_eval
 from ..core.cache_manager import cache_manager, cached
-from ..utils.db_utils import safe_save_session, safe_save_brief, safe_get_recent_sessions, safe_save_suggestion, safe_save_serp
+from ..utils.db_utils import safe_save_session, safe_save_brief, safe_get_recent_sessions, safe_save_suggestion, safe_save_serp, safe_get_full_session_data
 import json
 
 
@@ -268,8 +268,8 @@ def render_step_3_brief():
         if st.session_state.get("brief_latency"):
             st.caption(f"⚡ Generated in {st.session_state.brief_latency:.0f}ms")
         
-        # Simplified action buttons
-        col1, col2 = st.columns(2)
+        # Action buttons with export option
+        col1, col2, col3 = st.columns(3)
         with col1:
             st.download_button(
                 "📥 Download Brief",
@@ -279,7 +279,46 @@ def render_step_3_brief():
                 use_container_width=True
             )
         with col2:
-            if st.button("🔍 Continue to SERP Analysis", type="primary", use_container_width=True):
+            # Export current session button
+            # Create direct download for session export
+            session_id = st.session_state.get("current_session_id")
+            if session_id:
+                try:
+                    session_data = safe_get_full_session_data(session_id)
+                    if session_data and session_data.get("session"):
+                        # Import export function with path handling
+                        import sys
+                        import os
+                        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+                        ai_tool_dir = os.path.join(base_dir, 'ai-keyword-tool')
+                        if ai_tool_dir not in sys.path:
+                            sys.path.append(ai_tool_dir)
+                        
+                        from core.export import export_to_markdown
+                        
+                        # Get markdown content directly
+                        markdown_content = export_to_markdown(session_id, session_data, return_content=True)
+                        
+                        # Create filename
+                        topic_clean = session_data["session"]["topic"].replace(" ", "_").replace("-", "_")[:30]
+                        filename = f"{topic_clean}_export.md"
+                        
+                        st.download_button(
+                            "📄 Export Session",
+                            data=markdown_content,
+                            file_name=filename,
+                            mime="text/markdown",
+                            use_container_width=True,
+                            help="Download complete session as Markdown"
+                        )
+                    else:
+                        st.button("📄 Export Session", disabled=True, use_container_width=True, help="No session data")
+                except Exception as e:
+                    st.button("📄 Export Session", disabled=True, use_container_width=True, help=f"Export error")
+            else:
+                st.button("📄 Export Session", disabled=True, use_container_width=True, help="No active session")
+        with col3:
+            if st.button("🔍 Continue to SERP", type="primary", use_container_width=True):
                 state_manager.go_to_step(4)  # SERP analysis step
         
         # Simplified rating
@@ -605,24 +644,81 @@ def render_step_5_suggestions():
     col1, col2, col3 = st.columns(3)
     
     with col1:
+        # Direct download export to Markdown
+        session_id = st.session_state.get("current_session_id")
+        if session_id:
+            try:
+                # Get full session data
+                session_data = safe_get_full_session_data(session_id)
+                
+                if session_data and session_data.get("session"):
+                    # Import export function
+                    import sys
+                    import os
+                    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+                    ai_tool_dir = os.path.join(base_dir, 'ai-keyword-tool')
+                    if ai_tool_dir not in sys.path:
+                        sys.path.append(ai_tool_dir)
+                    
+                    from core.export import export_to_markdown
+                    
+                    # Get markdown content directly
+                    markdown_content = export_to_markdown(session_id, session_data, return_content=True)
+                    
+                    # Create filename
+                    topic_clean = session_data["session"]["topic"].replace(" ", "_").replace("-", "_")[:30]
+                    filename = f"{topic_clean}_complete_strategy.md"
+                    
+                    if st.download_button(
+                        "📄 Export Complete Strategy",
+                        data=markdown_content,
+                        file_name=filename,
+                        mime="text/markdown",
+                        help="Download complete session with all analysis"
+                    ):
+                        st.success("📄 Complete strategy exported!")
+                else:
+                    st.button("📄 Export Complete Strategy", disabled=True, help="No session data")
+            except Exception as e:
+                st.button("📄 Export Complete Strategy", disabled=True, help=f"Export error")
+        else:
+            st.button("📄 Export Complete Strategy", disabled=True, help="No active session")
+    
+    with col2:
         if st.download_button(
-            "📋 Download Full Strategy",
-            data=f"# Content Strategy for '{selected_kw}'\n\n" + "[Complete strategy content here]",
+            "📋 Download Strategy Summary",
+            data=f"# Content Strategy for '{selected_kw}'\n\n[Strategy summary would go here]",
             file_name=f"strategy_{selected_kw.replace(' ', '_')}.md",
             mime="text/markdown"
         ):
-            st.success("Strategy downloaded!")
-    
-    with col2:
-        if st.button("📊 View Analytics"):
-            st.info("Connect your analytics tool to track progress!")
+            st.success("Strategy summary downloaded!")
     
     with col3:
-        if st.button("🔄 New Analysis"):
-            for key in list(st.session_state.keys()):
-                if key.startswith(("keywords_", "selected_", "brief_", "serp_")):
-                    del st.session_state[key]
-            state_manager.go_to_step(1)
+        if st.button("📊 View Analytics"):
+            st.info("📈 Analytics dashboard coming soon!")
+    
+    # Additional export options
+    st.markdown("#### 💾 Export Options")
+    
+    export_col1, export_col2 = st.columns(2)
+    
+    with export_col1:
+        st.markdown("""
+        **� Markdown Export Includes:**
+        - Complete content brief
+        - AI strategy suggestions
+        - SERP analysis summary
+        - Session metadata
+        """)
+    
+    with export_col2:
+        st.markdown("""
+        **🔮 Coming Soon:**
+        - PDF export
+        - Word document export
+        - Email sharing
+        - Team collaboration
+        """)
     
     # Navigation
     if st.button("← Back to SERP Analysis"):

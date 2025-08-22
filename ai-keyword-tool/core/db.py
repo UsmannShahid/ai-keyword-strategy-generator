@@ -115,3 +115,91 @@ def get_serp_by_session(session_id):
         LIMIT 1
         """, (session_id,))
         return row.fetchone()
+
+def get_full_session_data(session_id):
+    """
+    Retrieve complete session data including session, brief, suggestions, and SERP.
+    
+    Args:
+        session_id: Session identifier
+        
+    Returns:
+        Dictionary with session, brief, suggestions, and serp data
+    """
+    with connect_db() as conn:
+        # Get session data
+        session_row = conn.execute("""
+        SELECT id, created_at, topic 
+        FROM sessions 
+        WHERE id = ?
+        """, (session_id,)).fetchone()
+        
+        # Get brief data  
+        brief_row = conn.execute("""
+        SELECT id, session_id, content, created_at 
+        FROM briefs 
+        WHERE session_id = ? 
+        ORDER BY created_at DESC 
+        LIMIT 1
+        """, (session_id,)).fetchone()
+        
+        # Get suggestions
+        suggestions_rows = conn.execute("""
+        SELECT id, session_id, variant, content, created_at 
+        FROM suggestions 
+        WHERE session_id = ? 
+        ORDER BY created_at DESC
+        """, (session_id,)).fetchall()
+        
+        # Get SERP data
+        serp_row = conn.execute("""
+        SELECT id, session_id, data, created_at 
+        FROM serps 
+        WHERE session_id = ? 
+        ORDER BY created_at DESC 
+        LIMIT 1
+        """, (session_id,)).fetchone()
+        
+        # Convert to dictionaries
+        session_dict = None
+        if session_row:
+            session_dict = {
+                "id": session_row[0],
+                "created_at": session_row[1], 
+                "topic": session_row[2]
+            }
+        
+        brief_dict = None
+        if brief_row:
+            brief_dict = {
+                "id": brief_row[0],
+                "session_id": brief_row[1],
+                "content": brief_row[2],
+                "created_at": brief_row[3]
+            }
+        
+        suggestions_list = []
+        for row in suggestions_rows:
+            suggestions_list.append({
+                "id": row[0],
+                "session_id": row[1], 
+                "variant": row[2],
+                "content": row[3],
+                "created_at": row[4]
+            })
+        
+        serp_dict = None
+        if serp_row:
+            serp_dict = {
+                "id": serp_row[0],
+                "session_id": serp_row[1],
+                "data": serp_row[2],
+                "created_at": serp_row[3]
+            }
+        
+        return {
+            "session": session_dict,
+            "brief": brief_dict,
+            "suggestions": suggestions_list,
+            "serp": serp_dict
+        }

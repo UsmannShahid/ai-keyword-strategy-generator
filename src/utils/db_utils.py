@@ -167,3 +167,115 @@ def safe_get_serp_by_session(session_id):
     except Exception as e:
         print(f"Warning: Could not retrieve SERP data from database: {e}")
         return None
+
+def safe_get_full_session_data(session_id):
+    """
+    Safely retrieve complete session data with fallback handling.
+    
+    Args:
+        session_id: Session identifier
+    
+    Returns:
+        Dictionary with session, brief, suggestions, and serp data or None if error
+    """
+    if not session_id:
+        return None
+        
+    try:
+        # Try to import and use the core database function with proper path handling
+        import sys
+        import os
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        ai_tool_dir = os.path.join(base_dir, 'ai-keyword-tool')
+        if ai_tool_dir not in sys.path:
+            sys.path.append(ai_tool_dir)
+        
+        from core.db import get_full_session_data
+        return get_full_session_data(session_id)
+        
+    except Exception as e:
+        print(f"Warning: Could not retrieve full session data: {e}")
+        
+        # Fallback: try to get data manually with local connection
+        try:
+            with connect_db() as conn:
+                # Get session data
+                session_row = conn.execute("""
+                SELECT id, created_at, topic 
+                FROM sessions 
+                WHERE id = ?
+                """, (session_id,)).fetchone()
+                
+                # Get brief data  
+                brief_row = conn.execute("""
+                SELECT id, session_id, content, created_at 
+                FROM briefs 
+                WHERE session_id = ? 
+                ORDER BY created_at DESC 
+                LIMIT 1
+                """, (session_id,)).fetchone()
+                
+                # Get suggestions
+                suggestions_rows = conn.execute("""
+                SELECT id, session_id, variant, content, created_at 
+                FROM suggestions 
+                WHERE session_id = ? 
+                ORDER BY created_at DESC
+                """, (session_id,)).fetchall()
+                
+                # Get SERP data
+                serp_row = conn.execute("""
+                SELECT id, session_id, data, created_at 
+                FROM serps 
+                WHERE session_id = ? 
+                ORDER BY created_at DESC 
+                LIMIT 1
+                """, (session_id,)).fetchone()
+                
+                # Convert to dictionaries
+                session_dict = None
+                if session_row:
+                    session_dict = {
+                        "id": session_row[0],
+                        "created_at": session_row[1], 
+                        "topic": session_row[2]
+                    }
+                
+                brief_dict = None
+                if brief_row:
+                    brief_dict = {
+                        "id": brief_row[0],
+                        "session_id": brief_row[1],
+                        "content": brief_row[2],
+                        "created_at": brief_row[3]
+                    }
+                
+                suggestions_list = []
+                for row in suggestions_rows:
+                    suggestions_list.append({
+                        "id": row[0],
+                        "session_id": row[1], 
+                        "variant": row[2],
+                        "content": row[3],
+                        "created_at": row[4]
+                    })
+                
+                serp_dict = None
+                if serp_row:
+                    serp_dict = {
+                        "id": serp_row[0],
+                        "session_id": serp_row[1],
+                        "data": serp_row[2],
+                        "created_at": serp_row[3]
+                    }
+                
+                return {
+                    "session": session_dict,
+                    "brief": brief_dict,
+                    "suggestions": suggestions_list,
+                    "serp": serp_dict
+                }
+                
+        except Exception as fallback_error:
+            print(f"Warning: Fallback session data retrieval also failed: {fallback_error}")
+            return None

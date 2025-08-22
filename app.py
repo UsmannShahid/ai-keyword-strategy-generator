@@ -433,6 +433,50 @@ with st.sidebar:
         if st.button("❓ Help", use_container_width=True, help="Get help for current step"):
             state_manager.open_help(current_step)
     
+    # Export section for active sessions
+    session_id = st.session_state.get("current_session_id")
+    if session_id and current_step >= 3:  # Only show after brief is generated
+        st.markdown("### 📄 Export Session")
+        if st.button("📄 Export to Markdown", use_container_width=True, help="Export complete session as Markdown"):
+            with st.spinner("Exporting session..."):
+                try:
+                    from src.utils.db_utils import safe_get_full_session_data
+                    session_data = safe_get_full_session_data(session_id)
+                    
+                    if session_data and session_data.get("session"):
+                        # Import export function with path handling
+                        import sys
+                        import os
+                        base_dir = os.path.dirname(__file__)
+                        ai_tool_dir = os.path.join(base_dir, 'ai-keyword-tool')
+                        if ai_tool_dir not in sys.path:
+                            sys.path.append(ai_tool_dir)
+                        
+                        from core.export import export_to_markdown
+                        filepath = export_to_markdown(session_id, session_data)
+                        
+                        # Show success message
+                        st.success("✅ Session exported!")
+                        st.caption(f"📁 {os.path.basename(filepath)}")
+                        
+                        # Offer download
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        
+                        st.download_button(
+                            "💾 Download",
+                            data=content,
+                            file_name=os.path.basename(filepath),
+                            mime="text/markdown",
+                            use_container_width=True
+                        )
+                    else:
+                        st.error("❌ No session data found")
+                except Exception as e:
+                    st.error(f"❌ Export failed: {str(e)}")
+        
+        st.divider()
+    
     # A/B Testing link
     try:
         st.page_link("pages/2_📊_Compare_Runs.py", label="📊 Compare A/B Results", use_container_width=True)
