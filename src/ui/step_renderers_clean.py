@@ -17,14 +17,17 @@ from .components.cache_management import render_smart_caching_widget, render_cac
 from ..services.smart_data_service import SmartDataService
 from ..core.cache_manager import cache_manager
 from ..core.services import (
-    KeywordService,
+    generate_keywords_from_seed,
     generate_brief_with_variant,
-    fetch_serp_snapshot
+    fetch_serp_snapshot,
+    generate_suggestions_with_llm,
+    save_session_to_db
 )
 from ..utils.db_utils import (
-    safe_save_session,
-    safe_get_recent_sessions,
-    safe_save_brief
+    save_keyword_extraction_to_db,
+    get_recent_keyword_extractions,
+    safe_get_full_session_data,
+    get_recent_keyword_extractions_with_data
 )
 
 # Import state manager
@@ -331,10 +334,10 @@ def render_keyword_context_tips(context: str):
 
 
 # Helper functions
-def safe_save_session_wrapper(topic: str) -> Optional[str]:
+def safe_save_session(topic: str) -> Optional[str]:
     """Safely save session to database"""
     try:
-        return safe_save_session(topic)
+        return save_session_to_db(topic)
     except Exception as e:
         print(f"Failed to save session: {e}")
         return None
