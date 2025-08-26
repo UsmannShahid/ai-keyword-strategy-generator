@@ -189,14 +189,75 @@ def render_step_2_keywords():
         </div>
         """, unsafe_allow_html=True)
         
-        # Keyword selection
-        keyword_options = filtered_df["keyword"].tolist()
-        selected = st.selectbox("Select a keyword to generate content brief:", [""] + keyword_options)
+        # Keyword source selection
+        st.markdown("#### 🎯 Choose Your Keyword Source")
+        keyword_source = st.radio(
+            "How would you like to proceed?",
+            ["Use AI-generated keywords", "Add your own keyword"],
+            horizontal=True,
+            help="Choose from our AI suggestions or enter your own target keyword"
+        )
+        
+        # Keyword selection based on source
+        if keyword_source == "Use AI-generated keywords":
+            keyword_options = filtered_df["keyword"].tolist()
+            selected = st.selectbox("Select a keyword to generate content brief:", [""] + keyword_options)
+        else:
+            # Custom keyword input
+            custom_keyword = st.text_input(
+                "Enter your target keyword:",
+                placeholder="e.g., best yoga mats for beginners",
+                help="Enter the specific keyword you want to create content for"
+            )
+            selected = custom_keyword.strip() if custom_keyword else None
         
         if selected:
-            # Show selected keyword details
-            kw_row = filtered_df[filtered_df["keyword"] == selected].iloc[0]
-            st.info(f"**{selected}** • Score: {kw_row['quick_win_score']} • Volume: {kw_row['volume']} • Difficulty: {kw_row['difficulty']}")
+            # Handle keyword details for both AI and custom keywords
+            if keyword_source == "Use AI-generated keywords":
+                # Show AI keyword details from existing dataframe
+                kw_row = filtered_df[filtered_df["keyword"] == selected].iloc[0]
+                st.info(f"**{selected}** • Score: {kw_row['quick_win_score']} • Volume: {kw_row['volume']} • Difficulty: {kw_row['difficulty']}")
+            else:
+                # Apply realistic scoring to custom keyword
+                custom_df = pd.DataFrame([{"keyword": selected, "category": "custom"}])
+                custom_df = add_scores(custom_df)  # Apply realistic scoring algorithm
+                
+                # Show calculated scores for custom keyword with analysis
+                kw_row = custom_df.iloc[0]
+                volume = kw_row.get('volume', kw_row.get('search_volume', 'N/A'))
+                word_count = len(selected.split())
+                
+                # Create analysis insight with intent detection
+                kw_lower = selected.lower()
+                
+                # Detect keyword intent
+                commercial_words = ['buy', 'purchase', 'price', 'cost', 'cheap', 'affordable', 'best', 'review', 'compare']
+                informational_words = ['how', 'what', 'why', 'guide', 'tutorial', 'tips', 'learn']
+                local_words = ['near me', 'local', 'nearby']
+                
+                if any(word in kw_lower for word in commercial_words):
+                    intent = "Commercial intent"
+                elif any(word in kw_lower for word in informational_words):
+                    intent = "Informational intent"
+                elif any(phrase in kw_lower for phrase in local_words):
+                    intent = "Local intent"
+                else:
+                    intent = "General search"
+                
+                # Create length-based analysis
+                if word_count == 1:
+                    length_analysis = "high volume but very competitive"
+                elif word_count == 2:
+                    length_analysis = "balanced volume and competition"
+                elif word_count == 3:
+                    length_analysis = "moderate volume, easier to rank"
+                else:
+                    length_analysis = "lower volume but much easier to rank"
+                
+                analysis = f"{intent} • {length_analysis}"
+                
+                st.info(f"**{selected}** (Custom) • Score: {kw_row['quick_win_score']} • Volume: {volume} • Difficulty: {kw_row['difficulty']}")
+                st.caption(f"📊 Analysis: {analysis} • Based on keyword characteristics and search patterns")
             
             if st.button("📝 Generate Content Brief", type="primary"):
                 st.session_state.selected_keyword = selected
