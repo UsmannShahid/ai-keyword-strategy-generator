@@ -40,10 +40,27 @@ safe_init_db()
 st.set_page_config(page_title="Keyword Quick Wins + AI Brief", page_icon="✨", layout="centered")
 
 # Initialize session state FIRST - before any other operations
-if "help_open" not in st.session_state:
-    st.session_state.help_open = False
-if "help_step" not in st.session_state:
-    st.session_state.help_step = 1
+# Essential session state variables that must be available immediately
+essential_state = {
+    "ux_step": 1,
+    "help_open": False,
+    "help_step": 1,
+    "seed_input": "",
+    "industry_input": "",
+    "audience_input": "",
+    "country_input": "US",
+    "language_input": "en",
+    "selected_keyword": "",
+    "keywords_data": None,
+    "brief_output": "",
+    "brief_variant": "A",
+    "serp_data": None,
+    "selected_keyword_source": "AI Generated"
+}
+
+for key, default_value in essential_state.items():
+    if key not in st.session_state:
+        st.session_state[key] = default_value
 
 # Initialize centralized state management
 # This replaces all the individual session state initializations
@@ -191,7 +208,7 @@ if st.session_state.get("help_open", False):
 
 
 def step_header():
-    s = st.session_state.ux_step
+    s = st.session_state.get("ux_step", 1)  # Safe access with default value
     steps = [
         ("🧭", "Inputs", 1),
         ("🔎", "Keywords", 2),

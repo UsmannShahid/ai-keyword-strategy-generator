@@ -298,6 +298,78 @@ def render_step_2_keywords():
                 st.session_state.selected_keyword = selected
                 state_manager.go_to_step(3)
         
+        # Google Keyword Planner (GKP) Data Integration
+        st.divider()
+        st.markdown("#### 📋 Google Keyword Planner Suggestions")
+        
+        # Import GKP functions
+        from ..core.keywords import load_gkp_keywords, get_keyword_stats, format_keyword_for_display
+        
+        plan_settings = st.session_state.get('plan_settings', {})
+        user_topic = st.session_state.get("seed_input", "")
+        
+        if user_topic:
+            # Load GKP keywords based on user topic and plan
+            max_suggestions = plan_settings.get("max_keywords", 20) if plan_settings else 20
+            
+            try:
+                gkp_keywords = load_gkp_keywords(
+                    topic=user_topic,
+                    max_results=max_suggestions,
+                    plan_settings=plan_settings
+                )
+                
+                if gkp_keywords:
+                    # Show statistics
+                    stats = get_keyword_stats(gkp_keywords)
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("GKP Keywords", stats.get('total_keywords', 0))
+                    with col2:
+                        st.metric("Avg Volume", f"{stats.get('avg_volume', 0):,.0f}")
+                    with col3:
+                        st.metric("Avg Competition", f"{stats.get('avg_competition', 0):.0%}")
+                    with col4:
+                        st.metric("Avg CPC", f"${stats.get('avg_cpc', 0):.2f}")
+                    
+                    # Display keywords
+                    st.markdown("**Keyword Suggestions from Google Keyword Planner:**")
+                    
+                    # Show different number based on plan
+                    display_limit = min(len(gkp_keywords), 10 if plan_settings.get('user_plan') == 'free' else 20)
+                    
+                    for i, kw in enumerate(gkp_keywords[:display_limit]):
+                        formatted_kw = format_keyword_for_display(kw)
+                        
+                        # Add selection button for each keyword
+                        col_kw, col_btn = st.columns([4, 1])
+                        with col_kw:
+                            st.markdown(formatted_kw)
+                        with col_btn:
+                            if st.button("Select", key=f"gkp_{i}", help=f"Use '{kw.get('Keyword', '')}' for content brief"):
+                                st.session_state.selected_keyword = kw.get('Keyword', '')
+                                st.session_state.selected_keyword_source = "Google Keyword Planner"
+                                st.success(f"✅ Selected: {kw.get('Keyword', '')}")
+                                state_manager.go_to_step(3)
+                    
+                    # Plan-specific messaging
+                    if plan_settings.get('user_plan') == 'free' and len(gkp_keywords) > 10:
+                        st.info(f"🆓 **Free Plan** - Showing 10 of {len(gkp_keywords)} available keywords")
+                        st.caption("💎 Upgrade to Premium to see all keyword suggestions")
+                    
+                    # Data source attribution
+                    st.caption("📊 Data source: Google Keyword Planner")
+                    
+                else:
+                    st.info(f"No Google Keyword Planner data found for '{user_topic}'. Try a broader topic.")
+                    
+            except Exception as e:
+                st.error(f"Error loading GKP keywords: {str(e)}")
+                st.caption("Using AI-generated keywords instead.")
+        else:
+            st.info("Enter a business topic above to see Google Keyword Planner suggestions.")
+        
         # AI Keyword Analysis Demo (Plan-Based Feature)
         st.divider()
         st.markdown("#### 🧠 AI Keyword Analysis")
@@ -335,10 +407,43 @@ def render_step_2_keywords():
             state_manager.go_to_step(1)
     with col2:
         # Manual keyword entry option
-        with st.expander("Or enter a keyword manually"):
-            manual_kw = st.text_input("Enter keyword:", placeholder="e.g., best marketing software")
+        with st.expander("🔍 Search Google Keyword Planner Database"):
+            search_term = st.text_input("Search for keywords:", placeholder="e.g., podcast, microphone, office chair")
+            
+            if search_term:
+                from ..core.keywords import load_gkp_keywords, format_keyword_for_display
+                plan_settings = st.session_state.get('plan_settings', {})
+                
+                try:
+                    search_results = load_gkp_keywords(
+                        topic=search_term,
+                        max_results=5,  # Limit search results
+                        plan_settings=plan_settings
+                    )
+                    
+                    if search_results:
+                        st.markdown("**Search Results:**")
+                        for i, kw in enumerate(search_results):
+                            formatted = format_keyword_for_display(kw)
+                            col_search, col_use = st.columns([4, 1])
+                            with col_search:
+                                st.markdown(formatted)
+                            with col_use:
+                                if st.button("Use", key=f"search_{i}"):
+                                    st.session_state.selected_keyword = kw.get('Keyword', '')
+                                    st.session_state.selected_keyword_source = "GKP Search"
+                                    state_manager.go_to_step(3)
+                    else:
+                        st.info("No keywords found. Try a different search term.")
+                        
+                except Exception as e:
+                    st.error(f"Search error: {str(e)}")
+            
+            st.divider()
+            manual_kw = st.text_input("Or enter a custom keyword:", placeholder="e.g., best marketing software")
             if manual_kw and st.button("Use this keyword"):
                 st.session_state.selected_keyword = manual_kw
+                st.session_state.selected_keyword_source = "Manual Entry"
                 state_manager.go_to_step(3)
 
 
@@ -354,6 +459,32 @@ def render_step_3_brief():
         return
     
     st.info(f"**Selected keyword:** {selected_kw}")
+    
+    # Show keyword source and GKP data if available
+    keyword_source = st.session_state.get("selected_keyword_source", "AI Generated")
+    st.caption(f"📊 Source: {keyword_source}")
+    
+    # Try to get GKP data for the selected keyword
+    if keyword_source in ["Google Keyword Planner", "GKP Search"]:
+        # Show enhanced keyword metrics
+        try:
+            from ..core.keywords import load_gkp_keywords
+            plan_settings = st.session_state.get('plan_settings', {})
+            
+            gkp_data = load_gkp_keywords(selected_kw, max_results=1, plan_settings=plan_settings)
+            if gkp_data:
+                kw_data = gkp_data[0]
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Search Volume", f"{kw_data.get('Search Volume', 0):,}")
+                with col2:
+                    st.metric("Competition", f"{kw_data.get('Competition', 0):.0%}")
+                with col3:
+                    st.metric("Avg CPC", f"${kw_data.get('CPC', 0):.2f}")
+                    
+        except Exception as e:
+            st.caption("Unable to load keyword metrics")
     
     # Brief style selection (simplified for users)
     brief_style = st.radio(
