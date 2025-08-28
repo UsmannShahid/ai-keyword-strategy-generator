@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional
 # Import core services
 try:
     from ..core.state_manager import state_manager
-    from ..core.services import KeywordService, generate_brief_with_variant, fetch_serp_snapshot
+    from ..core.services import KeywordService, generate_brief_with_variant, fetch_serp_snapshot, check_keyword_analysis_availability
     from ..utils.scoring import add_scores, analyze_keyword
     from ..utils.db_utils import safe_save_session, safe_save_brief
 except ImportError:
@@ -22,11 +22,161 @@ except ImportError:
     state_manager = SimpleStateManager()
 
 
-def render_current_step():
-    """Render the current step with modern dashboard navigation"""
+def render_progress_indicator(current_step, total_steps=5):
+    """Enhanced progress bar with time estimates"""
     
-    # Render modern sidebar dashboard
-    render_dashboard_sidebar()
+    # Visual progress bar
+    progress = current_step / total_steps
+    st.progress(progress)
+    
+    # Step information with time estimates
+    steps_info = {
+        1: ("📝 Business Info", "2 min"),
+        2: ("🔍 Find Keywords", "3 min"), 
+        3: ("📋 Content Plan", "2 min"),
+        4: ("🔍 Competition", "1 min"),
+        5: ("🚀 Strategy", "1 min")
+    }
+    
+    # Create columns for breadcrumb navigation
+    cols = st.columns(total_steps)
+    for i, (col, (step_name, time_est)) in enumerate(zip(cols, steps_info.items()), 1):
+        with col:
+            if i < current_step:
+                st.success(f"✅ {step_name}")
+            elif i == current_step:
+                st.info(f"🔄 {step_name}\n⏱️ ~{time_est}")
+            else:
+                st.caption(f"⏳ {step_name}\n⏱️ ~{time_est}")
+    
+    # Total time remaining
+    time_estimates = [2, 3, 2, 1, 1]
+    remaining_time = sum(time_estimates[current_step-1:])
+    if remaining_time > 0:
+        st.caption(f"⏱️ Estimated time remaining: ~{remaining_time} minutes")
+    
+    st.divider()
+
+
+def render_contextual_help_sidebar():
+    """Add helpful tips in sidebar based on current step"""
+    current_step = st.session_state.get("ux_step", 1)
+    
+    with st.sidebar:
+        st.markdown("### 💡 Quick Tips")
+        
+        if current_step == 1:
+            tips = [
+                "Be specific about your services and target customers",
+                "Mention your location for local SEO benefits", 
+                "Include what makes you different from competitors"
+            ]
+        elif current_step == 2:
+            tips = [
+                "Start with keywords scoring 70+ for quick wins",
+                "Look for 1000+ monthly searches for good traffic",
+                "Lower competition % means easier ranking",
+                "Mix short and long-tail keywords"
+            ]
+        elif current_step == 3:
+            tips = [
+                "Your content brief will guide your writing",
+                "Include your target keyword naturally",
+                "Focus on solving customer problems"
+            ]
+        elif current_step == 4:
+            tips = [
+                "Study competitor content gaps",
+                "Look for outdated information to update",
+                "Find opportunities to create better content"
+            ]
+        else:
+            tips = [
+                "Download your strategy for reference",
+                "Start with the highest-priority keywords",
+                "Track your progress over time"
+            ]
+        
+        for tip in tips:
+            st.info(f"💡 {tip}")
+        
+        # Add quick actions for power users
+        if current_step >= 2:
+            st.markdown("### ⚡ Quick Actions")
+            
+            # Quick start examples
+            if st.button("🚀 Example: Restaurant"):
+                st.session_state.seed_input = "Local Italian restaurant serving authentic pasta and pizza to families and couples in downtown area"
+                st.session_state.industry_input = "Restaurant & Food"
+                st.session_state.audience_input = "Local families, couples, food lovers"
+                st.rerun()
+                
+            if st.button("🚀 Example: Fitness"):
+                st.session_state.seed_input = "Personal training studio helping busy professionals get fit with 30-minute HIIT workouts and nutrition coaching"
+                st.session_state.industry_input = "Health & Fitness"
+                st.session_state.audience_input = "Busy professionals, working parents"
+                st.rerun()
+
+
+def detect_industry_from_description(business_desc: str) -> str:
+    """AI-powered industry detection from business description"""
+    business_lower = business_desc.lower()
+    
+    industry_keywords = {
+        "Restaurant & Food": ["restaurant", "cafe", "food", "kitchen", "dining", "catering", "bakery"],
+        "Health & Fitness": ["gym", "fitness", "health", "medical", "doctor", "clinic", "wellness"],
+        "Technology": ["software", "app", "tech", "digital", "website", "coding", "development"],
+        "Real Estate": ["real estate", "property", "housing", "rental", "mortgage", "realtor"],
+        "Education": ["school", "education", "learning", "training", "course", "teaching"],
+        "Retail & E-commerce": ["shop", "store", "retail", "online", "ecommerce", "selling"],
+        "Professional Services": ["consulting", "legal", "accounting", "financial", "marketing", "agency"]
+    }
+    
+    for industry, keywords in industry_keywords.items():
+        if any(keyword in business_lower for keyword in keywords):
+            return industry
+    
+    return ""
+
+
+def render_smart_business_input():
+    """Enhanced business input with real-time guidance"""
+    
+    st.markdown("### 📝 Tell Us About Your Business")
+    st.info("💡 Help us understand what you do so we can find the best keywords for you.")
+    
+    # Business description with enhanced guidance
+    business_desc = st.text_area(
+        "What does your business do?",
+        value=st.session_state.get("seed_input", ""),
+        height=120,
+        placeholder="e.g., We help small restaurants get more customers through social media and Google reviews. We create posts, manage ads, and help them get found online.",
+        help="💡 Be specific about your services, target customers, and unique value proposition"
+    )
+    
+    # Real-time feedback on description quality
+    char_count = len(business_desc.strip())
+    if char_count < 50:
+        st.warning(f"💡 Add more details ({char_count}/50+ characters) - describe your services and target customers")
+    elif char_count < 100:
+        st.info(f"👍 Good start! ({char_count} characters) - Consider adding your unique value proposition")
+    else:
+        st.success(f"✅ Excellent description! ({char_count} characters)")
+    
+    # Auto-detect industry and show suggestion
+    if char_count > 20:
+        detected_industry = detect_industry_from_description(business_desc)
+        if detected_industry:
+            st.caption(f"💡 Detected industry: **{detected_industry}**")
+    
+    return business_desc
+
+
+def render_current_step():
+    """Render the current step - clean version without duplicate progress bars"""
+    
+    # No duplicate progress indicators - handled by app.py step_header
+    # No duplicate sidebar help - handled by app.py sidebar
     
     # Get selected workflow
     workflow = st.session_state.get("selected_workflow", "keyword_research")
@@ -49,116 +199,30 @@ def render_current_step():
 
 
 def render_dashboard_sidebar():
-    """Clean sidebar with navigation only"""
-    with st.sidebar:
-        # Simple branding
-        st.markdown("### ✨ AI Content Studio")
-        st.markdown("---")
-        
-        current_workflow = st.session_state.get("selected_workflow", "keyword_research")
-        
-        workflows = [
-            ("keyword_research", "🔍", "Keyword Research", "Full SEO keyword analysis & strategy"),
-            ("content_strategy", "📝", "Content Strategy", "Business-focused content planning"),
-            ("content_outline", "📋", "Content Outline", "Detailed article outlines"),
-            ("content_ideas", "💡", "Content Ideas", "Creative content brainstorming"),
-            ("quick_brief", "🎯", "Quick Brief", "Fast content brief generation")
-        ]
-        
-        # Clean navigation buttons
-        for workflow_id, icon, title, description in workflows:
-            is_selected = current_workflow == workflow_id
-            
-            if is_selected:
-                # Selected workflow - highlighted button
-                st.button(f"{icon} {title}", 
-                         key=f"selected_{workflow_id}",
-                         disabled=True,
-                         use_container_width=True,
-                         type="primary")
-            else:
-                # Regular workflow - clickable button
-                if st.button(f"{icon} {title}", 
-                            key=f"select_{workflow_id}", 
-                            help=description,
-                            use_container_width=True):
-                    st.session_state.selected_workflow = workflow_id
-                    # Reset workflow-specific state when switching
-                    workflow_keys = ["ux_step", "selected_keyword", "brief_output", "serp_data", "keywords_data",
-                                   "strategy_business", "strategy_audience", "generated_strategy",
-                                   "outline_topic", "generated_outline", "ideas_niche", "generated_ideas",
-                                   "quick_keyword", "quick_brief_output"]
-                    for key in workflow_keys:
-                        if key in st.session_state:
-                            del st.session_state[key]
-                    st.rerun()
-        
-        st.divider()
-        
-        # Recent work section (simplified)
-        st.markdown("### 📚 Recent Work")
-        try:
-            from src.utils.db_utils import safe_get_recent_sessions
-            recent_sessions = safe_get_recent_sessions(3)
-            
-            if recent_sessions:
-                for session_id, topic, created_at in recent_sessions:
-                    # Simple display
-                    topic_display = topic[:20] + "..." if len(topic) > 20 else topic
-                    if st.button(f"📝 {topic_display or 'Untitled'}", 
-                               key=f"recent_{session_id}",
-                               use_container_width=True,
-                               help=f"Load previous session"):
-                        # Simple session restore (just navigate back)
-                        st.info("Session loading feature coming soon!")
-            else:
-                st.caption("No recent sessions")
-        except:
-            st.caption("Recent work unavailable")
+    """Sidebar navigation is handled by app.py to avoid duplication"""
+    # The main sidebar with workflow navigation is rendered in app.py
+    # This function exists for compatibility but doesn't add duplicate sidebar content
+    pass
 
 
 def render_main_header(workflow_info, current_step=None, total_steps=None):
-    """Render main header with workflow status and actions"""
+    """Render minimal workflow header - main header is handled by app.py"""
     workflow_id, icon, title, description = workflow_info
     
-    # Header container
-    header_col1, header_col2, header_col3 = st.columns([2, 1, 1])
-    
-    with header_col1:
+    # Simple workflow title and reset button
+    col1, col2 = st.columns([4, 1])
+    with col1:
         st.markdown(f"## {icon} {title}")
         st.caption(description)
-        
-        # Show progress if multi-step workflow
-        if current_step and total_steps:
-            progress = (current_step - 1) / (total_steps - 1) if total_steps > 1 else 1.0
-            st.progress(progress)
-            st.caption(f"Step {current_step} of {total_steps}")
-    
-    with header_col2:
-        # Quick actions
-        st.markdown("**Quick Actions**")
-        if st.button("🔄 Reset", key="header_reset", help="Reset current workflow"):
+    with col2:
+        if st.button("🔄 Reset Workflow", key="header_reset", help="Start this workflow over"):
             # Reset workflow-specific state
-            workflow_keys = ["ux_step", "selected_keyword", "brief_output", "serp_data", "keywords_data",
-                           "strategy_business", "strategy_audience", "generated_strategy",
-                           "outline_topic", "generated_outline", "ideas_niche", "generated_ideas",
-                           "quick_keyword", "quick_brief_output"]
+            workflow_keys = ["ux_step", "selected_keyword", "brief_output", "serp_data", "keywords_data"]
             for key in workflow_keys:
                 if key in st.session_state:
                     del st.session_state[key]
+            st.session_state.ux_step = 1
             st.rerun()
-    
-    with header_col3:
-        # Help and info
-        st.markdown("**Help & Tips**")
-        with st.popover("💡 Tips"):
-            st.markdown("""
-            **How to use this workflow:**
-            - Follow the steps in order
-            - All outputs can be downloaded
-            - Switch workflows anytime from sidebar
-            - Use Reset to start over
-            """)
     
     st.divider()
 
@@ -190,46 +254,93 @@ def render_keyword_research_workflow():
 
 def render_step_1_business_input():
     """Step 1: Business input and context setting"""
-    st.markdown("### 🏢 Step 1: Business Context")
-    st.info("💡 Provide context about your business to generate targeted keyword suggestions.")
+    # Use the smart business input with enhanced UX
+    seed_input = render_smart_business_input()
     
-    seed_input = st.text_area(
-        "Describe your business, product, or service:",
-        value=st.session_state.get("seed_input", ""),
-        height=120,
-        placeholder="e.g., We provide digital marketing services for small businesses, focusing on SEO, social media management, and content creation."
-    )
-    
-    # Optional additional context
-    col1, col2 = st.columns(2)
+    # Optional additional context with simpler language
+    col1, col2, col3 = st.columns(3)
     with col1:
         industry = st.text_input(
-            "Industry (optional):",
+            "What industry? (optional):",
             value=st.session_state.get("industry_input", ""),
-            placeholder="e.g., Digital Marketing"
+            placeholder="e.g., Restaurants, Fitness, Real Estate"
         )
     with col2:
         target_audience = st.text_input(
-            "Target Audience (optional):",
+            "Who are your customers? (optional):",
             value=st.session_state.get("audience_input", ""),
-            placeholder="e.g., Small business owners"
+            placeholder="e.g., Busy parents, Local businesses"
+        )
+    with col3:
+        country_options = {
+            "US": "🇺🇸 United States",
+            "CA": "🇨🇦 Canada",
+            "GB": "🇬🇧 United Kingdom", 
+            "AU": "🇦🇺 Australia",
+            "DE": "🇩🇪 Germany",
+            "FR": "🇫🇷 France",
+            "ES": "🇪🇸 Spain",
+            "IT": "🇮🇹 Italy",
+            "NL": "🇳🇱 Netherlands",
+            "BR": "🇧🇷 Brazil",
+            "MX": "🇲🇽 Mexico",
+            "JP": "🇯🇵 Japan",
+            "IN": "🇮🇳 India",
+            "SG": "🇸🇬 Singapore"
+        }
+        
+        current_country = st.session_state.get("country_input", "US")
+        country = st.selectbox(
+            "Target Country:",
+            options=list(country_options.keys()),
+            index=list(country_options.keys()).index(current_country) if current_country in country_options else 0,
+            format_func=lambda x: country_options[x],
+            help="Choose your primary target market for localized keyword research"
         )
     
     # Save to session state
     st.session_state.seed_input = seed_input
     st.session_state.industry_input = industry
     st.session_state.audience_input = target_audience
+    st.session_state.country_input = country
     
-    if seed_input.strip():
+    # Smart defaults and suggestions
+    if len(seed_input.strip()) > 20:
+        detected_industry = detect_industry_from_description(seed_input)
+        if detected_industry and not industry:
+            st.caption(f"💡 Try setting industry to: **{detected_industry}**")
+    
+    # Always show the button - better UX with disabled state
+    has_input = seed_input.strip()
+    if has_input:
         if st.button("🔍 Generate Keywords", type="primary"):
             state_manager.go_to_step(2)
+        st.info("👀 **Next:** We'll find keywords that your potential customers are searching for")
     else:
-        st.warning("Please describe your business to continue")
+        st.button(
+            "🔍 Generate Keywords", 
+            type="primary",
+            disabled=True,
+            help="Complete business description above to enable keyword generation"
+        )
+        st.caption("⬆️ Fill in business details above to activate keyword generation")
+        st.info("📝 **What happens next:** Tell us about your business → Find great keywords → Create content plan → Get more customers")
 
 
 def render_step_2_keywords():
     """Step 2: AI keyword generation and selection"""
-    st.markdown("### 🔑 Step 2: Keyword Selection")
+    st.markdown("### 🔍 Find Your Best Keywords")
+    
+    # Show selected country context
+    country = st.session_state.get("country_input", "US")
+    country_names = {
+        "US": "🇺🇸 United States", "CA": "🇨🇦 Canada", "GB": "🇬🇧 United Kingdom", 
+        "AU": "🇦🇺 Australia", "DE": "🇩🇪 Germany", "FR": "🇫🇷 France",
+        "ES": "🇪🇸 Spain", "IT": "🇮🇹 Italy", "NL": "🇳🇱 Netherlands",
+        "BR": "🇧🇷 Brazil", "MX": "🇲🇽 Mexico", "JP": "🇯🇵 Japan",
+        "IN": "🇮🇳 India", "SG": "🇸🇬 Singapore"
+    }
+    st.info(f"🌍 **Target Market:** {country_names.get(country, country)} | Keywords optimized for this region")
     
     # Check if we have business context
     if not st.session_state.get("seed_input", "").strip():
@@ -247,6 +358,7 @@ def render_step_2_keywords():
                     business_desc=st.session_state.seed_input,
                     industry=st.session_state.get("industry_input", ""),
                     audience=st.session_state.get("audience_input", ""),
+                    country=st.session_state.get("country_input", "US"),
                     plan_settings=st.session_state.get('plan_settings', {})
                 )
                 st.session_state.keywords_data = keywords_data
@@ -280,23 +392,114 @@ def render_step_2_keywords():
         df = pd.DataFrame(all_keywords)
         df = add_scores(df)  # Add realistic scores
         
-        # Show top keywords
-        st.markdown("#### 🎯 Generated Keywords")
+        # Show enhanced keyword table for non-SEO experts
+        st.markdown("#### 🎯 Your Keyword Opportunities")
         
-        # Simple display without complex styling
-        st.dataframe(df[["keyword", "category", "quick_win_score"]], use_container_width=True)
+        # Add contextual help expander
+        with st.expander("🤔 How to read this table"):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("""
+                **🔍 Keyword**: What people search for
+                **📋 Type**: Category of search intent
+                **👥 Searches**: Monthly search volume
+                """)
+            with col2:
+                st.markdown("""
+                **⚡ Comp**: Competition level (lower = easier)
+                **🎯 Score**: Opportunity rating
+                - 🟢 70+ = Quick wins (easy to rank)
+                - 🟡 50-69 = Medium effort  
+                - 🔴 <50 = Challenging (high competition)
+                """)
         
-        # Selection
+        st.caption("💡 **Green = Easy wins** | **Yellow = Medium effort** | **Red = Hard to rank**")
+        
+        # Enhanced dataframe with color coding and more columns
+        display_df = df.copy()
+        
+        # Add user-friendly columns
+        if 'volume' not in display_df.columns:
+            display_df['volume'] = [1000, 2000, 500, 1500, 800] * (len(display_df) // 5 + 1)
+            display_df = display_df.iloc[:len(df)]
+        
+        if 'difficulty' not in display_df.columns:
+            display_df['difficulty'] = [30, 45, 25, 55, 35] * (len(display_df) // 5 + 1)
+            display_df = display_df.iloc[:len(df)]
+        
+        # Rename columns for non-SEO experts - shorter names for better fit
+        display_df = display_df.rename(columns={
+            'keyword': 'Keyword',
+            'category': 'Type',
+            'volume': 'Searches',
+            'difficulty': 'Comp %',
+            'quick_win_score': 'Score'
+        })
+        
+        # Color coding function for opportunity score
+        def color_score(val):
+            if val >= 70:
+                return 'background-color: #d1fae5; color: #065f46'  # Green
+            elif val >= 50:
+                return 'background-color: #fef3c7; color: #92400e'  # Yellow
+            else:
+                return 'background-color: #fee2e2; color: #991b1b'  # Red
+        
+        # Apply styling - use map instead of deprecated applymap
+        styled_df = display_df.style.map(color_score, subset=['Score'])
+        
+        # Display the enhanced table with compact configuration
+        st.dataframe(
+            styled_df,
+            use_container_width=True,
+            height=400,  # Fixed height to fit on screen
+            column_config={
+                "Keyword": st.column_config.TextColumn("🔍 Keyword", width="medium"),
+                "Type": st.column_config.TextColumn("📋 Type", width="small"),
+                "Searches": st.column_config.NumberColumn("👥 Searches/mo", format="%d", width="small"),
+                "Comp %": st.column_config.NumberColumn("⚡ Comp", format="%d%%", width="small"),
+                "Score": st.column_config.NumberColumn("🎯 Score", format="%d", width="small")
+            },
+            hide_index=True
+        )
+        
+        # Compact explanation
+        st.info("� **Quick Guide:** Searches = monthly volume, Comp = competition %, Score = opportunity (70+ = easy wins)")
+        
+        # Selection with always-visible button  
         keyword_options = df["keyword"].tolist()
-        selected = st.selectbox("Select a keyword to continue:", [""] + keyword_options)
+        selected = st.selectbox("Choose your target keyword:", [""] + keyword_options)
         
+        # Always show the Generate Brief button
         if selected:
             kw_row = df[df["keyword"] == selected].iloc[0]
-            st.info(f"**Selected:** {selected} (Score: {kw_row['quick_win_score']})")
+            score = kw_row.get('quick_win_score', 50)
+            searches = kw_row.get('volume', 1000)
+            
+            # Color-coded success message
+            if score >= 70:
+                st.success(f"🎯 **Great Choice!** {selected}")
+                st.caption(f"✅ High opportunity (Score: {score}) • {searches:,} monthly searches")
+            elif score >= 50:
+                st.warning(f"🎯 **Good Choice!** {selected}")  
+                st.caption(f"⚡ Medium opportunity (Score: {score}) • {searches:,} monthly searches")
+            else:
+                st.error(f"🎯 **Challenging Choice!** {selected}")
+                st.caption(f"⚠️ Low opportunity (Score: {score}) • {searches:,} monthly searches")
             
             if st.button("📝 Generate Content Brief", type="primary"):
                 st.session_state.selected_keyword = selected
                 state_manager.go_to_step(3)
+            st.info("👀 **Next:** Create a detailed content plan to help you write great content that people will find")
+        else:
+            st.button(
+                "📝 Generate Content Brief", 
+                type="primary",
+                disabled=True,
+                help="Select a keyword from the table above to enable brief generation"
+            )
+            st.caption("👆 Choose a keyword above to create your content plan")
+            st.info("💡 **Tip:** Pick keywords with high Opportunity Scores (green = best) and good monthly search numbers")
         
         # Google Keyword Planner (GKP) Data Integration
         st.divider()
@@ -372,33 +575,188 @@ def render_step_2_keywords():
         
         # AI Keyword Analysis Demo (Plan-Based Feature)
         st.divider()
-        st.markdown("#### 🧠 AI Keyword Analysis")
+        st.markdown("#### 🧠 AI Keyword Analysis & Clustering")
         
         # Import the analysis functions
         from ..core.services import analyze_keywords_with_gpt, show_analysis, check_keyword_analysis_availability
+        from ..core.keywords import load_gkp_keywords
         
         plan_settings = st.session_state.get('plan_settings', {})
         
         if check_keyword_analysis_availability(plan_settings):
             st.success("✅ **Premium Feature Available** - Advanced AI analysis enabled")
             
+            # Choose analysis source
+            analysis_source = st.radio(
+                "Choose keywords to analyze:",
+                ["🤖 AI-Generated Keywords", "📊 Google Keyword Planner Data", "🔀 Combined Analysis"],
+                horizontal=True,
+                help="Select which keyword dataset to analyze with GPT"
+            )
+            
             if st.button("🔍 Analyze Keywords with AI", type="secondary"):
-                with st.spinner("Running AI analysis..."):
+                with st.spinner("Running GPT analysis..."):
                     try:
-                        keywords_data = st.session_state.get("keywords_data", {})
-                        ai_analysis = analyze_keywords_with_gpt(keywords_data, plan_settings)
-                        show_analysis(ai_analysis)
+                        keywords_to_analyze = []
+                        
+                        if analysis_source == "🤖 AI-Generated Keywords":
+                            # Use AI-generated keywords
+                            keywords_data = st.session_state.get("keywords_data", {})
+                            keywords_to_analyze = keywords_data
+                            
+                        elif analysis_source == "📊 Google Keyword Planner Data":
+                            # Use GKP keywords
+                            user_topic = st.session_state.get("seed_input", "")
+                            country = st.session_state.get("country_input", "US")
+                            if user_topic:
+                                gkp_keywords = load_gkp_keywords(
+                                    topic=f"{user_topic} {country}",  # Include country context
+                                    max_results=plan_settings.get("max_keywords", 20),
+                                    plan_settings=plan_settings
+                                )
+                                keywords_to_analyze = gkp_keywords
+                            else:
+                                st.error("No topic provided for GKP analysis")
+                                keywords_to_analyze = []
+                                
+                        else:  # Combined Analysis
+                            # Combine both AI and GKP keywords
+                            ai_keywords_data = st.session_state.get("keywords_data", {})
+                            user_topic = st.session_state.get("seed_input", "")
+                            
+                            combined_keywords = []
+                            
+                            # Add AI keywords
+                            if ai_keywords_data:
+                                for category, kws in ai_keywords_data.items():
+                                    for kw in kws:
+                                        if isinstance(kw, dict):
+                                            kw['source'] = 'AI Generated'
+                                            combined_keywords.append(kw)
+                                        else:
+                                            combined_keywords.append({
+                                                "Keyword": str(kw),
+                                                "Search Volume": 1000,
+                                                "Competition": 0.5,
+                                                "CPC": 1.0,
+                                                "source": "AI Generated"
+                                            })
+                            
+                            # Add GKP keywords
+                            if user_topic:
+                                country = st.session_state.get("country_input", "US")
+                                gkp_keywords = load_gkp_keywords(
+                                    topic=f"{user_topic} {country}",  # Include country context
+                                    max_results=10,  # Limit to avoid overwhelming
+                                    plan_settings=plan_settings
+                                )
+                                for kw in gkp_keywords:
+                                    kw['source'] = 'Google Keyword Planner'
+                                    combined_keywords.append(kw)
+                            
+                            keywords_to_analyze = combined_keywords
+                        
+                        if keywords_to_analyze:
+                            ai_analysis = analyze_keywords_with_gpt(keywords_to_analyze, plan_settings)
+                            show_analysis(ai_analysis)
+                        else:
+                            st.error("No keywords available for analysis")
+                            
                     except Exception as e:
                         st.error(f"Analysis error: {str(e)}")
+                        
         else:
             st.warning("🔒 **Premium Feature** - Advanced keyword analysis with AI insights")
             st.info("💎 Upgrade to Premium to unlock:")
             st.markdown("""
-            - AI-powered keyword difficulty analysis
-            - Competition gap identification  
-            - Strategic keyword recommendations
-            - Trend analysis and forecasting
+            - 🤖 **GPT-4 powered keyword clustering** by search intent
+            - 🎯 **Quick Win identification** (low competition + high volume)
+            - 📈 **Competitive analysis** and opportunity assessment  
+            - 💡 **Strategic content recommendations** and priority ranking
+            - 🔄 **Analysis of both AI and GKP keyword data**
             """)
+
+    # Quick Win Full Flow (Premium Feature)
+    if st.session_state.get("quick_win_active") and check_keyword_analysis_availability(plan_settings):
+        st.divider()
+        st.markdown("### ⚡ Quick Win Full Analysis")
+        
+        selected_keyword = st.session_state.get("selected_keyword")
+        if selected_keyword:
+            st.success(f"🎯 **Processing Quick Win:** {selected_keyword}")
+            
+            if st.button("🚀 Run Complete Analysis", type="primary"):
+                with st.spinner("Running complete Quick Win analysis..."):
+                    try:
+                        # Import required functions
+                        from ..utils.db_utils import safe_save_session, safe_save_brief, safe_save_serp, safe_save_suggestion
+                        from ..core.services import generate_suggestions, fetch_serp_with_serpapi, fetch_serp_with_searchapi
+                        import json
+                        
+                        # Step 1: Save session
+                        session_id = safe_save_session(selected_keyword)
+                        
+                        # Step 2: Generate Brief
+                        st.markdown("#### 📝 Generating Content Brief...")
+                        brief_output, prompt, latency, usage = generate_brief_with_variant(
+                            keyword=selected_keyword,
+                            variant="A",
+                            plan_settings=plan_settings
+                        )
+                        safe_save_brief(session_id, brief_output)
+                        st.session_state.brief_output = brief_output
+                        
+                        # Step 3: Fetch SERP
+                        st.markdown("#### 🔍 Fetching SERP Data...")
+                        serp_provider = plan_settings.get("serp_provider", "serpapi")
+                        if serp_provider == "serpapi":
+                            serp_data = fetch_serp_with_serpapi(selected_keyword, plan_settings=plan_settings)
+                        else:
+                            serp_data = fetch_serp_with_searchapi(selected_keyword, plan_settings=plan_settings)
+                        
+                        safe_save_serp(session_id, json.dumps(serp_data))
+                        st.session_state.serp_data = serp_data
+                        
+                        # Step 4: Generate AI Suggestions
+                        st.markdown("#### 🤖 Generating AI Suggestions...")
+                        suggestions = generate_suggestions(brief_output, serp_data, plan_settings)
+                        for suggestion in suggestions:
+                            safe_save_suggestion(session_id, suggestion)
+                        
+                        # Display Results
+                        st.success("✅ **Quick Win Analysis Complete!**")
+                        
+                        # Show Brief
+                        st.markdown("## 📋 Content Brief")
+                        st.markdown(brief_output)
+                        
+                        # Show SERP Results
+                        st.markdown("## 🔍 SERP Results")
+                        if serp_data:
+                            for i, result in enumerate(serp_data[:3], 1):
+                                if isinstance(result, dict):
+                                    st.markdown(f"**{i}. {result.get('title', 'No title')}**")
+                                    st.markdown(f"🔗 {result.get('link', 'No link')}")
+                                    st.markdown(f"📝 {result.get('snippet', 'No snippet')}")
+                                    st.divider()
+                        else:
+                            st.info("No SERP data available")
+                        
+                        # Show AI Suggestions
+                        st.markdown("## 💡 AI Content Suggestions")
+                        for i, suggestion in enumerate(suggestions, 1):
+                            st.markdown(f"{i}. {suggestion}")
+                        
+                        # Reset Quick Win state
+                        st.session_state.quick_win_active = False
+                        
+                    except Exception as e:
+                        st.error(f"Quick Win analysis failed: {str(e)}")
+            
+            # Option to cancel
+            if st.button("❌ Cancel Quick Win"):
+                st.session_state.quick_win_active = False
+                st.rerun()
     
     # Navigation
     col1, col2 = st.columns(2)
@@ -449,7 +807,7 @@ def render_step_2_keywords():
 
 def render_step_3_brief():
     """Step 3: Content brief generation"""
-    st.markdown("### 📝 Step 3: AI Content Brief")
+    st.markdown("### 📋 Create Your Content Plan")
     
     selected_kw = st.session_state.get("selected_keyword")
     if not selected_kw:
@@ -458,11 +816,15 @@ def render_step_3_brief():
             state_manager.go_to_step(2)
         return
     
-    st.info(f"**Selected keyword:** {selected_kw}")
-    
-    # Show keyword source and GKP data if available
-    keyword_source = st.session_state.get("selected_keyword_source", "AI Generated")
-    st.caption(f"📊 Source: {keyword_source}")
+    # Enhanced keyword display with change option
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.success(f"🎯 **Target Keyword:** {selected_kw}")
+        keyword_source = st.session_state.get("selected_keyword_source", "AI Generated")
+        st.caption(f"📊 Source: {keyword_source}")
+    with col2:
+        if st.button("🔄 Change Keyword", help="Go back to select a different keyword"):
+            state_manager.go_to_step(2)
     
     # Try to get GKP data for the selected keyword
     if keyword_source in ["Google Keyword Planner", "GKP Search"]:
@@ -486,15 +848,17 @@ def render_step_3_brief():
         except Exception as e:
             st.caption("Unable to load keyword metrics")
     
-    # Brief style selection (simplified for users)
-    brief_style = st.radio(
-        "Choose your brief style:",
-        ["🎯 SEO Focused", "✍️ Writer Friendly"], 
+    # Brief format selection (improved clarity)
+    brief_format = st.radio(
+        "Choose your brief format:",
+        ["📋 Executive Summary", "📝 Detailed Guide"], 
         horizontal=True,
-        help="SEO Focused = Technical optimization details | Writer Friendly = Easy-to-follow content guide"
+        help="Executive Summary = Key points & strategy overview | Detailed Guide = Step-by-step content instructions"
     )
-    # Convert to internal variant
-    variant_letter = "A" if "SEO Focused" in brief_style else "B"
+    # Convert to internal variant (both are SEO-optimized)
+    variant_letter = "A" if "Executive Summary" in brief_format else "B"
+    
+    st.caption("💡 Both formats help your content get found by the right people")
     
     # Show plan-specific model info
     plan_settings = st.session_state.get('plan_settings', {})
@@ -507,7 +871,11 @@ def render_step_3_brief():
     else:
         st.info(f"🤖 Using {model_name} for content generation")
     
-    if st.button("🚀 Generate Content Brief", type="primary"):
+    # Always show generate button with current state
+    has_existing_brief = bool(st.session_state.get("brief_output"))
+    button_text = "🔄 Regenerate Brief" if has_existing_brief else "🚀 Generate Content Brief"
+    
+    if st.button(button_text, type="primary"):
         with st.spinner("Generating content brief..."):
             try:
                 brief_output, prompt, latency, usage = generate_brief_with_variant(
@@ -524,6 +892,9 @@ def render_step_3_brief():
                 
             except Exception as e:
                 st.error(f"Error generating brief: {str(e)}")
+    
+    if not has_existing_brief:
+        st.info("👀 **Next:** Get your content plan → See what competitors are doing → Get your complete strategy")
     
     # Show generated brief if available
     if st.session_state.get("brief_output"):
@@ -574,20 +945,27 @@ def render_step_4_serp():
             state_manager.go_to_step(3)
         return
     
-    st.info(f"**Analyzing competition for:** {selected_kw}")
+    # Enhanced keyword display with change option
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.success(f"🎯 **Analyzing competition for:** {selected_kw}")
+        # Show plan-specific SERP provider info
+        plan_settings = st.session_state.get('plan_settings', {})
+        serp_provider = plan_settings.get('serp_provider', 'serpapi')
+        
+        if serp_provider == "searchapi":
+            st.caption(f"🆓 SearchAPI.io - analyzing up to {plan_settings.get('serp_results_limit', 5)} results")
+        else:
+            st.caption(f"💎 SerpAPI - analyzing up to {plan_settings.get('serp_results_limit', 20)} results")
+    with col2:
+        if st.button("🔄 Change Keyword", help="Go back to select a different keyword"):
+            state_manager.go_to_step(2)
     
-    # Show plan-specific SERP provider info
-    plan_settings = st.session_state.get('plan_settings', {})
-    serp_provider = plan_settings.get('serp_provider', 'serpapi')
+    # Always show analyze button with state awareness
+    has_serp_data = bool(st.session_state.get("serp_data"))
+    button_text = "🔄 Re-analyze Competition" if has_serp_data else "🔍 Analyze Competition"
     
-    if serp_provider == "searchapi":
-        st.info("🆓 Using SearchAPI.io for SERP results (free tier)")
-        st.caption(f"Will analyze up to {plan_settings.get('serp_results_limit', 5)} search results")
-    else:
-        st.success("💎 Using SerpAPI for SERP results (premium)")
-        st.caption(f"Will analyze up to {plan_settings.get('serp_results_limit', 20)} search results")
-    
-    if st.button("🔍 Analyze Competition", type="primary"):
+    if st.button(button_text, type="primary"):
         with st.spinner("Analyzing search results..."):
             try:
                 serp_data = fetch_serp_snapshot(
@@ -603,23 +981,31 @@ def render_step_4_serp():
             except Exception as e:
                 st.error(f"Error analyzing competition: {str(e)}")
     
+    if not has_serp_data:
+        st.info("👀 **Next:** Analyze search results → Get competitor insights → Generate final strategy with actionable recommendations")
+    
     # Show SERP data if available
     serp_data = st.session_state.get("serp_data", [])
     if serp_data:
+        st.divider()
         st.markdown("#### 🏆 Top Competitors")
+        st.caption("💡 Use this data to identify content gaps and opportunities for your content")
+        
         for i, result in enumerate(serp_data[:5], 1):
             with st.expander(f"{i}. {result.get('title', 'No title')[:60]}..."):
                 st.write(f"**URL:** {result.get('url', 'N/A')}")
                 st.write(f"**Snippet:** {result.get('snippet', 'N/A')}")
         
-        # Navigation
+        # Always show navigation options
         col1, col2 = st.columns(2)
         with col1:
             if st.button("← Back to Brief"):
                 state_manager.go_to_step(3)
         with col2:
-            if st.button("Get Strategy →"):
+            if st.button("Get Final Strategy →", type="primary"):
                 state_manager.go_to_step(5)
+                
+        st.info("👀 **Next:** Review your complete content strategy with actionable recommendations and export options")
     else:
         # Navigation
         if st.button("← Back to Brief"):

@@ -182,12 +182,12 @@ def render_step_3_brief():
     
     # Variant selection
     variant = st.radio(
-        "Choose brief style:",
-        ["A - SEO Focused", "B - Writer Friendly"], 
+        "Choose brief format:",
+        ["📋 Executive Summary", "📝 Detailed Guide"], 
         horizontal=True,
-        help="A = Technical SEO brief, B = Easy-to-follow writer brief"
+        help="Executive Summary = Key points & strategy overview | Detailed Guide = Step-by-step content instructions"
     )
-    variant_letter = variant.split(" - ")[0]  # Extract A or B
+    variant_letter = "A" if "Executive Summary" in variant else "B"  # Both are SEO-optimized
     
     if st.button("🚀 Generate Content Brief", type="primary"):
         with st.spinner("Generating content brief..."):

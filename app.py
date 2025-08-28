@@ -186,13 +186,271 @@ ICON_BRIEF = """<svg width="14" height="14" viewBox="0 0 24 24" fill="currentCol
   xmlns="http://www.w3.org/2000/svg" style="vertical-align:-2px;">
   <path d="M8 4h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM8 6v12h8V6H8zm2 2h4v1H10V8zm0 3h4v1H10v-1zm0 3h2v1H10v-1z"/></svg>"""
 
-# Hero section with better visual hierarchy
-st.markdown("""
-<div style="text-align: center; padding: 2rem 0; background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); border-radius: 12px; margin-bottom: 2rem; border: 1px solid #cbd5e1;">
-<h2 style="color: #1e293b; margin: 0; font-size: 2rem;">✨ AI Keyword Strategy Generator</h2>
-<p style="color: #64748b; font-size: 1.1rem; margin: 0.5rem 0 0 0;">Find quick-win keywords → Generate content briefs → Analyze competition → Get actionable insights</p>
-</div>
-""", unsafe_allow_html=True)
+# Guided onboarding for new users
+def render_welcome_onboarding():
+    """Welcome screen for first-time users"""
+    st.markdown("""
+    <div style="text-align: center; padding: 3rem 2rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; margin-bottom: 2rem; color: white;">
+    <h1 style="margin: 0; font-size: 2.5rem;">✨ Welcome to AI Keyword Tool</h1>
+    <p style="font-size: 1.2rem; margin: 1rem 0 2rem 0; opacity: 0.9;">Get more customers by creating content that people actually search for</p>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin: 2rem 0;">
+        <div style="background: rgba(255,255,255,0.1); padding: 1.5rem; border-radius: 12px;">
+            <h3>🔍 Find Keywords</h3>
+            <p>Discover what your customers are searching for</p>
+        </div>
+        <div style="background: rgba(255,255,255,0.1); padding: 1.5rem; border-radius: 12px;">
+            <h3>📋 Get Content Plans</h3>
+            <p>AI creates detailed guides for your content</p>
+        </div>
+        <div style="background: rgba(255,255,255,0.1); padding: 1.5rem; border-radius: 12px;">
+            <h3>🏆 Beat Competition</h3>
+            <p>See what competitors are doing and do it better</p>
+        </div>
+    </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Quick path selection for different user types
+    st.markdown("### 🎯 What brings you here today?")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("🚀 I need more customers", use_container_width=True, type="primary"):
+            st.session_state.user_intent = "growth"
+            st.session_state.show_onboarding = False
+            st.session_state.selected_workflow = "keyword_research"
+            st.rerun()
+            
+    with col2:  
+        if st.button("📝 I need content ideas", use_container_width=True):
+            st.session_state.user_intent = "content"
+            st.session_state.show_onboarding = False  
+            st.session_state.selected_workflow = "content_ideas"
+            st.rerun()
+            
+    with col3:
+        if st.button("⚡ I need this done fast", use_container_width=True):
+            st.session_state.user_intent = "speed"
+            st.session_state.show_onboarding = False
+            st.session_state.selected_workflow = "quick_brief" 
+            st.rerun()
+    
+    st.markdown("---")
+    
+    # Value propositions based on user type
+    intent = st.session_state.get("user_intent", "")
+    if intent == "growth":
+        st.success("🎯 **Perfect!** We'll help you find keywords that bring paying customers, not just traffic.")
+    elif intent == "content":
+        st.info("💡 **Great choice!** We'll generate content ideas that your audience actually wants to read.")
+    elif intent == "speed":
+        st.warning("⚡ **Let's go!** Skip the research and get straight to actionable content plans.")
+    
+    if st.checkbox("Don't show this welcome screen again"):
+        st.session_state.hide_onboarding_permanently = True
+
+def handle_error_with_recovery(error_msg, error_type="general", step=None):
+    """Enhanced error handling with recovery suggestions"""
+    
+    if error_type == "api_limit":
+        st.error(f"⚠️ **API Limit Reached**")
+        st.markdown("""
+        **What happened:** You've reached your daily limit for this feature.
+        
+        **What you can do:**
+        - 🔄 Try again tomorrow for fresh limits
+        - 💎 Upgrade to Premium for higher limits
+        - ✍️ Use manual keyword entry as a workaround
+        """)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Try Again Tomorrow", help="Reset will be automatic"):
+                st.info("Your limits reset at midnight UTC")
+        with col2:
+            if st.button("✍️ Enter Keywords Manually"):
+                st.session_state.manual_keyword_mode = True
+                st.rerun()
+                
+    elif error_type == "network":
+        st.error(f"🌐 **Connection Issue**")
+        st.markdown("""
+        **What happened:** We couldn't connect to our services.
+        
+        **What you can do:**
+        - 🔄 Check your internet connection
+        - ⏰ Wait a moment and try again
+        - 💾 Your progress is saved automatically
+        """)
+        
+        if st.button("🔄 Retry Now", type="primary"):
+            st.rerun()
+            
+    elif error_type == "generation":
+        st.error(f"🤖 **Generation Error**")
+        st.markdown(f"""
+        **What happened:** {error_msg}
+        
+        **What you can do:**
+        - 🔄 Try with different keywords
+        - ✍️ Provide more business details
+        - 📞 Contact support if this persists
+        """)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Try Different Keywords"):
+                if step:
+                    state_manager.go_to_step(step - 1)
+                st.rerun()
+        with col2:
+            if st.button("✍️ Add More Details"):
+                state_manager.go_to_step(1)
+                st.rerun()
+    else:
+        # Generic error with helpful recovery
+        st.error(f"❌ **Something went wrong**")
+        st.markdown(f"""
+        **Error details:** {error_msg}
+        
+        **What you can try:**
+        - 🔄 Refresh the page and try again
+        - 🔙 Go back to the previous step
+        - 💾 Your progress has been saved
+        """)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Refresh & Retry"):
+                st.rerun()
+        with col2:
+            if st.button("🔙 Go Back") and step and step > 1:
+                state_manager.go_to_step(step - 1)
+                st.rerun()
+
+def show_progress_celebration(step, keyword=None):
+    """Motivational progress celebrations"""
+    celebrations = {
+        1: {
+            "title": "🎉 Great start!",
+            "message": "You've set up your business context. Now let's find some amazing keywords!",
+            "tip": "💡 The more specific you are, the better keywords we'll find."
+        },
+        2: {
+            "title": "🚀 Keywords discovered!", 
+            "message": f"Found opportunities for {keyword or 'your business'}. Time to pick your winner!",
+            "tip": "🎯 Look for green scores (70+) - these are your quick wins!"
+        },
+        3: {
+            "title": "📋 Content plan ready!",
+            "message": f"Your content brief for '{keyword}' is complete. You're almost done!",
+            "tip": "✅ This brief will guide you to create content that ranks."
+        },
+        4: {
+            "title": "🔍 Competition analyzed!",
+            "message": "Now you know exactly what your competitors are doing. Time for strategy!",
+            "tip": "💪 Use these insights to create better content than your competition."
+        },
+        5: {
+            "title": "🏆 Mission accomplished!",
+            "message": "You have everything needed to dominate your market. Go create amazing content!",
+            "tip": "📈 Track your rankings and come back for more keywords when you're ready."
+        }
+    }
+    
+    if step in celebrations:
+        celebration = celebrations[step]
+        
+        # Animated celebration
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%); 
+            color: white; 
+            padding: 1.5rem; 
+            border-radius: 12px; 
+            text-align: center; 
+            margin: 1rem 0;
+            animation: celebrationPulse 2s ease-in-out;
+        ">
+            <h3 style="margin: 0 0 0.5rem 0; font-size: 1.5rem;">{celebration['title']}</h3>
+            <p style="margin: 0 0 1rem 0; font-size: 1.1rem; opacity: 0.95;">{celebration['message']}</p>
+            <small style="opacity: 0.9;">{celebration['tip']}</small>
+        </div>
+        
+        <style>
+        @keyframes celebrationPulse {{
+            0% {{ transform: scale(0.95); opacity: 0.8; }}
+            50% {{ transform: scale(1.02); opacity: 1; }}
+            100% {{ transform: scale(1); opacity: 1; }}
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Progress stats
+        progress_percentage = (step / 5) * 100
+        if step < 5:
+            st.progress(progress_percentage / 100, f"Progress: {progress_percentage:.0f}% complete")
+        else:
+            st.success("🎯 **100% Complete!** You're ready to dominate your market!")
+            
+            # Completion rewards
+            if st.button("🎁 Get Your Success Kit", type="primary"):
+                st.balloons()
+                st.success("🎉 Congratulations! Check your downloads for your complete strategy.")
+
+def add_helpful_tooltips():
+    """Add contextual help tooltips throughout the app"""
+    
+    # Add CSS for tooltips
+    st.markdown("""
+    <style>
+    .tooltip {
+        position: relative;
+        display: inline-block;
+        cursor: help;
+    }
+    
+    .tooltip .tooltiptext {
+        visibility: hidden;
+        width: 200px;
+        background-color: #1e293b;
+        color: white;
+        text-align: center;
+        padding: 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        position: absolute;
+        z-index: 1;
+        bottom: 125%;
+        left: 50%;
+        margin-left: -100px;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+    
+    .tooltip:hover .tooltiptext {
+        visibility: visible;
+        opacity: 1;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Check if we should show onboarding
+show_onboarding = st.session_state.get("show_onboarding", True)
+hide_permanently = st.session_state.get("hide_onboarding_permanently", False)
+
+if show_onboarding and not hide_permanently:
+    render_welcome_onboarding()
+else:
+    # Original hero section for returning users
+    st.markdown("""
+    <div style="text-align: center; padding: 2rem 0; background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); border-radius: 12px; margin-bottom: 2rem; border: 1px solid #cbd5e1;">
+    <h2 style="color: #1e293b; margin: 0; font-size: 2rem;">✨ AI Keyword Strategy Generator</h2>
+    <p style="color: #64748b; font-size: 1.1rem; margin: 0.5rem 0 0 0;">Find quick-win keywords → Generate content briefs → Analyze competition → Get actionable insights</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 # header bar: Help button on the right with better styling
 col1, col2 = st.columns([4, 1])
@@ -208,28 +466,24 @@ if st.session_state.get("help_open", False):
 
 
 def step_header():
-    s = st.session_state.get("ux_step", 1)  # Safe access with default value
-    steps = [
-        ("🧭", "Inputs", 1),
-        ("🔎", "Keywords", 2),
-        ("📝", "Brief", 3),
-        ("🔍", "SERP", 4),
-        ("💡", "Suggestions", 5),
-    ]
-    html = ['<div class="stepper">']
-    for icon, label, num in steps:
-        cls = "step"
-        if s == num: cls += " step--active"
-        elif s > num: cls += " step--done"
-        html.append(f'<span class="{cls}"><span class="step__icon">{icon}</span>{label}</span>')
-    html.append("</div>")
-    st.markdown("".join(html), unsafe_allow_html=True)
+    s = st.session_state.get("ux_step", 1)
+    selected_kw = st.session_state.get("selected_keyword", "")
+    
+    # Clean, simple header without progress indicator
+    steps = ["📝 Business", "🔍 Keywords", "📋 Content", "🏆 Competition", "✨ Strategy"]
+    current_step_name = steps[s-1] if s <= len(steps) else "Progress"
+    
+    if selected_kw:
+        st.success(f"🎯 **{current_step_name}:** {selected_kw}")
+    else:
+        st.info(f"📍 **{current_step_name}** (Step {s} of 5)")
+    
     st.divider()
 
 # Custom CSS for better reading width and spacing
 st.markdown("""
 <style>
-section.main .block-container { max-width: 1000px; padding-top: 2rem; }
+section.main .block-container { max-width: 1200px; padding-top: 2rem; }
 
 /* improved heading spacing and typography */
 h1 { color: #1e293b; margin-bottom: 1rem !important; }
@@ -270,13 +524,66 @@ h3 { margin-top: 1.2rem !important; margin-bottom: .6rem !important; color: #475
 .k-badge--weak { background:#fee2e2; color:#b91c1c; border-color:#fca5a5; }
 .k-badge--strong { background:#d1fae5; color:#15803d; border-color:#86efac; }
 
-/* step chips - better contrast and visibility */
-.stepper { display:flex; gap:.75rem; margin:1rem 0 1.5rem; }
-.step { padding:.5rem .8rem; border-radius:8px; font-weight:600; font-size:14px;
-        background:#f8fafc; border:2px solid #e2e8f0; color:#475569; transition: all 0.2s ease; }
-.step--active { background:#3b82f6; border-color:#2563eb; color:#ffffff; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3); }
-.step--done { background:#10b981; border-color:#059669; color:#ffffff; }
-.step__icon { margin-right:.4rem; }
+/* Clean header styling - no fancy stepper needed */
+.step-header-container { margin-bottom: 1rem; }
+
+/* Mobile optimization - responsive design */
+@media (max-width: 768px) {
+    section.main .block-container {
+        max-width: 100%;
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+        padding-top: 1rem;
+    }
+    
+    /* Mobile header optimization */
+    .step-header-container {
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Mobile buttons - touch friendly */
+    .stButton > button {
+        width: 100% !important;
+        padding: 1rem !important;
+        font-size: 16px !important;
+        min-height: 48px !important;
+    }
+    
+    /* Mobile forms - prevent zoom on iOS */
+    .stTextInput > div > div input,
+    .stTextArea > div > div textarea {
+        font-size: 16px !important;
+    }
+    
+    /* Mobile tables */
+    .dataframe div[data-testid="stDataFrame"] {
+        font-size: 12px;
+        overflow-x: auto;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Extra small screens */
+    h1 { font-size: 1.5rem !important; }
+    h2 { font-size: 1.25rem !important; }
+}
+
+/* Touch-friendly enhancements */
+.stButton > button:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+}
+
+/* Focus accessibility */
+.stButton > button:focus {
+    outline: 2px solid #3b82f6 !important;
+    outline-offset: 2px !important;
+}
+
+/* Loading states */
+.stSpinner > div {
+    border-color: #3b82f6 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -359,12 +666,7 @@ if OPENAI_API_KEY and not OPENAI_API_KEY.startswith("sk-"):
 
 # Title is now included in the hero section above
 
-# Quick navigation link to A/B comparison page
-try:
-    st.sidebar.page_link("pages/2_📊_Compare_Runs.py", label="📊 Compare Runs")
-except Exception:
-    # Fallback (older Streamlit versions without page_link)
-    pass
+# No additional navigation needed - sidebar is simplified
 
 # Keep a simple in-memory history for this session
 if "history" not in st.session_state:
@@ -455,10 +757,16 @@ else:
 
 st.divider()
 
+# Initialize helpful features
+add_helpful_tooltips()
+
 # Render current step using extracted renderers
 render_current_step()
 
-# ------------- Modern Sidebar -----------
+# Progress celebrations moved to sidebar to avoid scrolling issues
+# Main content area stays clean and navigation-friendly
+
+# ------------- Clean Sidebar -----------
 with st.sidebar:
     # Header with app branding
     st.markdown("""
@@ -468,124 +776,146 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
-    # Current progress indicator
+    # Workflow navigation - essential for users
+    st.markdown("### 🎯 Choose Workflow")
+    current_workflow = st.session_state.get("selected_workflow", "keyword_research")
+    
+    workflows = [
+        ("keyword_research", "🔍", "Keyword Research"),
+        ("quick_brief", "⚡", "Quick Brief"),
+        ("content_outline", "📋", "Content Outline"),
+        ("content_ideas", "💡", "Content Ideas")
+    ]
+    
+    for workflow_id, icon, title in workflows:
+        is_selected = current_workflow == workflow_id
+        
+        if is_selected:
+            # Selected workflow - highlighted
+            st.button(f"{icon} {title}", 
+                     key=f"selected_{workflow_id}",
+                     disabled=True,
+                     use_container_width=True,
+                     type="primary")
+        else:
+            # Clickable workflow option
+            if st.button(f"{icon} {title}", 
+                        key=f"select_{workflow_id}",
+                        use_container_width=True):
+                st.session_state.selected_workflow = workflow_id
+                # Reset workflow state when switching
+                workflow_keys = ["ux_step", "selected_keyword", "brief_output", "serp_data", "keywords_data"]
+                for key in workflow_keys:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.rerun()
+    
+    st.divider()
+    
+    # Current status with compact celebration
     current_step = st.session_state.get("ux_step", 1)
     selected_kw = st.session_state.get("selected_keyword", "")
     
-    st.markdown("### 📍 Current Progress")
-    
-    # Progress visualization
-    progress_steps = [
-        ("🧭 Business Input", 1, "✅" if current_step > 1 else "📍" if current_step == 1 else "⏸️"),
-        ("🔎 Keywords Found", 2, "✅" if current_step > 2 else "📍" if current_step == 2 else "⏸️"),
-        ("📝 Brief Generated", 3, "✅" if current_step > 3 else "📍" if current_step == 3 else "⏸️"),
-        ("🔍 SERP Analyzed", 4, "✅" if current_step > 4 else "📍" if current_step == 4 else "⏸️"),
-        ("💡 Strategy Ready", 5, "✅" if current_step >= 5 else "📍" if current_step == 5 else "⏸️")
-    ]
-    
-    for step_name, step_num, status in progress_steps:
-        if status == "✅":
-            st.markdown(f"<div style='color: #10b981; padding: 0.25rem 0;'>{status} {step_name}</div>", unsafe_allow_html=True)
-        elif status == "📍":
-            st.markdown(f"<div style='color: #3b82f6; padding: 0.25rem 0; font-weight: 600;'>{status} {step_name}</div>", unsafe_allow_html=True)
-        else:
-            st.markdown(f"<div style='color: #9ca3af; padding: 0.25rem 0;'>{status} {step_name}</div>", unsafe_allow_html=True)
-    
     if selected_kw:
-        st.info(f"🎯 **Target:** {selected_kw}")
+        st.success(f"🎯 **Target:** {selected_kw}")
+        
+        # Compact celebration for progress
+        if current_step >= 3:
+            st.caption("🎉 Great progress! Keep going!")
+    elif current_workflow == "keyword_research":
+        st.info(f"📍 **Step {current_step} of 5**")
+        
+        # Compact motivation
+        if current_step == 1:
+            st.caption("💡 Tell us about your business")
+        elif current_step == 2:
+            st.caption("🔍 Find your best keywords")
+    else:
+        st.info("📍 **Ready to start**")
     
-    st.divider()
-    
-    # Quick actions based on current step
-    st.markdown("### ⚡ Quick Actions")
-    
-    if current_step == 1:
-        st.markdown("📝 Fill out your business details to get started")
-    elif current_step == 2:
-        st.markdown("🔍 Review keywords and select the best opportunity")
-    elif current_step == 3:
-        st.markdown("📋 Generate your content brief with AI")
-    elif current_step == 4:
-        st.markdown("🔍 Analyze competitor search results")
-    elif current_step == 5:
-        st.markdown("💡 Get your final content strategy")
-    
-    # Quick navigation
+    # Essential actions
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🔄 Restart", use_container_width=True, help="Start a new keyword analysis"):
-            for key in list(st.session_state.keys()):
-                if key.startswith(("keywords_", "selected_", "brief_", "serp_", "ai_")):
+        if st.button("🔄 Reset", use_container_width=True, help="Reset current workflow"):
+            workflow_keys = ["ux_step", "selected_keyword", "brief_output", "serp_data", "keywords_data"]
+            for key in workflow_keys:
+                if key in st.session_state:
                     del st.session_state[key]
-            state_manager.go_to_step(1)
+            if current_workflow == "keyword_research":
+                state_manager.go_to_step(1)
+            st.rerun()
     
     with col2:
-        if st.button("❓ Help", use_container_width=True, help="Get help for current step"):
-            state_manager.open_help(current_step)
-    
-    # A/B Testing link
-    try:
-        st.page_link("pages/2_📊_Compare_Runs.py", label="📊 Compare A/B Results", use_container_width=True)
-    except Exception:
-        pass
+        if st.button("❓ Help", use_container_width=True, help="Get help"):
+            if current_workflow == "keyword_research":
+                state_manager.open_help(current_step)
+            else:
+                st.info("Help available for Keyword Research workflow")
     
     st.divider()
     
-    # Recent work section
-    st.markdown("### 📚 Recent Work")
+    # Recent work - simplified
+    st.markdown("### 📚 Recent Sessions")
     
     try:
         from src.utils.db_utils import safe_get_recent_sessions
-        recent_sessions = safe_get_recent_sessions(4)
+        recent_sessions = safe_get_recent_sessions(3)
         
         if recent_sessions:
             for session_id, topic, created_at in recent_sessions:
-                # Format date nicely
+                display_topic = topic[:20] + "..." if len(topic) > 20 else topic
                 try:
-                    date_str = created_at.split('T')[0] if 'T' in created_at else created_at[:10]
-                    # Convert to more readable format
                     from datetime import datetime
                     date_obj = datetime.fromisoformat(created_at.split('T')[0])
                     date_str = date_obj.strftime("%b %d")
                 except:
                     date_str = "Recent"
                 
-                # Truncate topic for display
-                display_topic = topic[:35] + "..." if len(topic) > 35 else topic
-                
-                # Create a card for each session
-                st.markdown(f"""
-                <div style="background: #f8fafc; padding: 0.75rem; border-radius: 8px; border-left: 3px solid #3b82f6; margin: 0.5rem 0;">
-                <div style="font-weight: 600; color: #1e293b; font-size: 0.9rem;">{display_topic}</div>
-                <div style="color: #64748b; font-size: 0.75rem; margin-top: 0.25rem;">📅 {date_str}</div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.caption(f"📝 {display_topic} - {date_str}")
         else:
-            st.markdown("""
-            <div style="text-align: center; padding: 1rem; color: #64748b; font-style: italic;">
-            No previous sessions yet.<br>
-            Generate your first brief to see it here! 🚀
-            </div>
-            """, unsafe_allow_html=True)
+            st.caption("No recent sessions")
             
     except Exception:
-        st.caption("Session history unavailable")
-    
-    # Keep a simple in-memory history for this session
-    if "history" not in st.session_state:
-        st.session_state.history = []
-    
-    # Render cache info in sidebar if in dev mode
-    cache_manager.render_cache_info()
+        st.caption("History unavailable")
     
     st.divider()
     
-    # App info footer
-    st.markdown("""
-    <div style="text-align: center; padding: 1rem 0; color: #64748b; font-size: 0.8rem;">
-    <strong>🎯 AI Keyword Strategy Tool</strong><br>
-    Smart keyword research + AI-powered content briefs<br>
-    <span style="color: #9ca3af;">Powered by GPT-4o-mini</span>
-    </div>
-    """, unsafe_allow_html=True)
+    # Power user shortcuts  
+    with st.expander("⚡ Power User Shortcuts"):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("🚀 Quick Demo", help="Load example data"):
+                # Pre-fill with example business
+                st.session_state.seed_input = "Digital marketing agency helping local restaurants get more customers through social media, Google ads, and review management"
+                st.session_state.industry_input = "Digital Marketing"
+                st.session_state.audience_input = "Local restaurants, food businesses"
+                st.session_state.country_input = "US"
+                st.session_state.selected_workflow = "keyword_research"
+                st.session_state.ux_step = 2  # Skip to keywords
+                st.success("🎯 Demo data loaded!")
+                st.rerun()
+                
+        with col2:
+            if st.button("💾 Export Data", help="Download your work"):
+                # Quick export functionality
+                current_data = {
+                    "business": st.session_state.get("seed_input", ""),
+                    "industry": st.session_state.get("industry_input", ""),
+                    "audience": st.session_state.get("audience_input", ""),
+                    "keyword": st.session_state.get("selected_keyword", ""),
+                    "step": st.session_state.get("ux_step", 1)
+                }
+                st.json(current_data)
+                
+        # Keyboard shortcuts info
+        st.caption("""
+        💡 **Pro Tips:** 
+        • Use Tab to navigate between fields quickly
+        • Press Enter in text fields to auto-advance
+        • Bookmark this page for quick access
+        """)
+    
+    # Simple footer
+    st.caption("🎯 AI-powered SEO content strategy")
 

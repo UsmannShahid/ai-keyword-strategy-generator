@@ -5,7 +5,7 @@ Coordinates between LLM client and parsing logic.
 
 import json
 import time
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List, Union
 from openai import OpenAI
 import os
 
@@ -201,6 +201,7 @@ class KeywordService:
         business_desc: str, 
         industry: str = "", 
         audience: str = "", 
+        country: str = "US",
         location: str = "",
         prompt_template: str = "default_seo",
         plan_settings: dict = None
@@ -226,12 +227,33 @@ class KeywordService:
             }
         
         try:
+            # Country-specific context
+            country_context = {
+                "US": "United States market",
+                "CA": "Canadian market", 
+                "GB": "UK market",
+                "AU": "Australian market",
+                "DE": "German market",
+                "FR": "French market",
+                "ES": "Spanish market",
+                "IT": "Italian market",
+                "NL": "Dutch market",
+                "BR": "Brazilian market",
+                "MX": "Mexican market",
+                "JP": "Japanese market",
+                "IN": "Indian market",
+                "SG": "Singapore market"
+            }.get(country, f"{country} market")
+            
             # Real API call with structured prompt
             prompt = f"""
             Generate 8-12 SEO keywords for this business: {business_desc}
             Industry: {industry or 'general'}
             Audience: {audience or 'general consumers'}
+            Target Market: {country_context}
             Location: {location or 'global'}
+            
+            Consider regional search patterns, local terminology, and market-specific needs for {country_context}.
             
             Return a JSON object with this exact structure:
             {{
@@ -272,7 +294,151 @@ class KeywordService:
 # KEYWORD ANALYSIS STUBS (Plan-Based Features)
 # ============================================================================
 
-def analyze_keywords_with_gpt(keywords_data: Dict[str, Any], plan_settings: dict = None) -> Dict[str, Any]:
+def build_keyword_analysis_prompt(keywords: List[Dict[str, Any]]) -> str:
+    """
+    Build a comprehensive prompt for GPT keyword analysis and clustering.
+    
+    Args:
+        keywords: List of keyword dictionaries with volume, competition, CPC data
+        
+    Returns:
+        Formatted prompt string for GPT analysis
+    """
+    if not keywords:
+        return "No keywords provided for analysis."
+    
+    # Format keywords with metrics
+    keyword_list = "\n".join([
+        f"- {kw.get('Keyword', kw.get('keyword', 'Unknown'))} "
+        f"(Volume: {kw.get('Search Volume', kw.get('volume', 0)):,}, "
+        f"CPC: ${kw.get('CPC', kw.get('cpc', 0)):.2f}, "
+        f"Competition: {kw.get('Competition', kw.get('competition', 0)):.0%})"
+        for kw in keywords
+    ])
+    
+    prompt = f"""You are an expert SEO strategist analyzing keywords for content marketing and search optimization.
+
+Given the following keyword list with search volume, cost-per-click (CPC), and competition data, perform a comprehensive analysis:
+
+### KEYWORD DATA:
+{keyword_list}
+
+### ANALYSIS REQUIREMENTS:
+
+1. **INTENT CLASSIFICATION** - Group keywords by search intent:
+   - **Informational**: How-to, guides, explanations (users seeking knowledge)
+   - **Commercial**: Reviews, comparisons, "best" keywords (research phase)
+   - **Transactional**: "Buy", "price", specific products (ready to purchase)
+   - **Navigational**: Brand names, specific sites (looking for specific destination)
+
+2. **QUICK WIN IDENTIFICATION** - Find 3-5 keywords that are:
+   - Low to medium competition (< 50% competition score)
+   - Decent search volume (> 1,000 monthly searches)
+   - Reasonable CPC (indicates commercial value)
+   - High potential ROI for content creation
+
+3. **COMPETITIVE ANALYSIS** - Assess:
+   - Overall competition landscape
+   - Opportunities for content gaps
+   - Difficulty vs opportunity matrix
+
+4. **STRATEGIC RECOMMENDATIONS** - Provide:
+   - Priority order for content creation
+   - Content types that would perform well
+   - Long-tail opportunities
+   - Seasonal considerations if applicable
+
+### OUTPUT FORMAT:
+Use clear markdown formatting with sections for each analysis type. Include specific keyword recommendations with reasoning.
+
+### ANALYSIS:"""
+
+    return prompt
+
+
+def analyze_keywords_with_gpt(keywords_data: Union[List[Dict[str, Any]], Dict[str, Any]], plan_settings: dict = None) -> Dict[str, Any]:
+    """
+    Advanced keyword analysis using GPT for clustering, intent analysis, and Quick Win identification.
+    
+    Args:
+        keywords_data: Keyword data (list of dicts or categorized dict)
+        plan_settings: User plan settings
+    
+    Returns:
+        Analysis data including GPT insights, quick wins, and recommendations
+    """
+    if not plan_settings or not plan_settings.get("keyword_analysis_enabled", False):
+        return {"error": "Keyword analysis not available for your plan"}
+    
+    # Convert keywords_data to list format if needed
+    keywords_list = []
+    if isinstance(keywords_data, dict):
+        # Handle categorized keywords from AI generation
+        for category, kws in keywords_data.items():
+            for kw in kws:
+                if isinstance(kw, dict):
+                    keywords_list.append(kw)
+                else:
+                    # Convert string to dict format
+                    keywords_list.append({
+                        "Keyword": str(kw),
+                        "Search Volume": 1000,  # Default values
+                        "Competition": 0.5,
+                        "CPC": 1.0,
+                        "category": category
+                    })
+    else:
+        keywords_list = keywords_data
+    
+    if not keywords_list:
+        return {"error": "No keywords provided for analysis"}
+    
+    try:
+        # Use plan-specific model
+        model = plan_settings.get("gpt_model", "gpt-4o-mini")
+        
+        # Build analysis prompt
+        prompt = build_keyword_analysis_prompt(keywords_list)
+        
+        # Get OpenAI client
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return {"error": "OpenAI API key not configured"}
+        
+        client = OpenAI(api_key=api_key)
+        
+        # Make GPT API call
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are an expert SEO strategist specializing in keyword research and content strategy."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=2000
+        )
+        
+        gpt_analysis = response.choices[0].message.content
+        
+        # Parse and structure the response
+        analysis_result = {
+            "raw_analysis": gpt_analysis,
+            "model_used": model,
+            "analysis_timestamp": time.time(),
+            "keywords_analyzed": len(keywords_list),
+            "total_search_volume": sum(kw.get('Search Volume', kw.get('volume', 0)) for kw in keywords_list),
+            "avg_competition": sum(kw.get('Competition', kw.get('competition', 0)) for kw in keywords_list) / len(keywords_list) if keywords_list else 0,
+            "avg_cpc": sum(kw.get('CPC', kw.get('cpc', 0)) for kw in keywords_list) / len(keywords_list) if keywords_list else 0
+        }
+        
+        return analysis_result
+        
+    except Exception as e:
+        print(f"Error in GPT keyword analysis: {str(e)}")
+        return {"error": f"Analysis failed: {str(e)}"}
+
+
+def analyze_keywords_with_gpt_old(keywords_data: Dict[str, Any], plan_settings: dict = None) -> Dict[str, Any]:
     """
     STUB: Advanced keyword analysis using GPT (paid users only).
     TODO: Implement actual AI-powered keyword analysis
@@ -314,10 +480,152 @@ def analyze_keywords_with_gpt(keywords_data: Dict[str, Any], plan_settings: dict
     
     return analysis
 
+
+def extract_quick_win_keywords(gpt_response: str) -> List[str]:
+    """
+    Extract Quick Win keywords from GPT analysis response.
+    
+    Args:
+        gpt_response: Raw GPT analysis text
+        
+    Returns:
+        List of extracted Quick Win keywords
+    """
+    import re
+    
+    # Look for Quick Win sections with numbered lists
+    quick_win_patterns = [
+        r"### 🔥 Quick Win Keywords?:?\s*\n((?:\d+\.\s.+\n?)+)",
+        r"Quick Win Keywords?:?\s*\n((?:\d+\.\s.+\n?)+)",
+        r"🔥.*Quick Win.*:?\s*\n((?:\d+\.\s.+\n?)+)",
+        r"### Quick Wins?:?\s*\n((?:\d+\.\s.+\n?)+)",
+        r"## Quick Win.*:?\s*\n((?:\d+\.\s.+\n?)+)"
+    ]
+    
+    quick_wins = []
+    
+    for pattern in quick_win_patterns:
+        matches = re.search(pattern, gpt_response, re.MULTILINE | re.IGNORECASE)
+        if matches:
+            lines = matches.group(1).strip().split('\n')
+            for line in lines:
+                # Extract keyword from numbered list
+                keyword_match = re.match(r'\d+\.\s*(.+)', line.strip())
+                if keyword_match:
+                    keyword = keyword_match.group(1).strip()
+                    # Clean up any extra formatting
+                    keyword = re.sub(r'\*\*|\*|`', '', keyword)
+                    if keyword and len(keyword) > 3:  # Basic validation
+                        quick_wins.append(keyword)
+    
+    # Fallback: look for any keywords in bullet points or lists
+    if not quick_wins:
+        bullet_patterns = [
+            r"[-*]\s*([^-*\n]+?)(?:\s*\(|$)",
+            r"•\s*([^•\n]+?)(?:\s*\(|$)"
+        ]
+        
+        for pattern in bullet_patterns:
+            matches = re.findall(pattern, gpt_response)
+            for match in matches:
+                keyword = match.strip()
+                keyword = re.sub(r'\*\*|\*|`', '', keyword)
+                if keyword and len(keyword) > 3 and len(keyword) < 80:
+                    quick_wins.append(keyword)
+    
+    # Remove duplicates and limit results
+    return list(dict.fromkeys(quick_wins))[:5]
+
+
+def generate_suggestions(brief: str, serp_data: List[Dict], plan_settings: dict = None) -> List[str]:
+    """
+    Generate AI-powered content suggestions based on brief and SERP data.
+    
+    Args:
+        brief: Generated content brief
+        serp_data: SERP analysis data
+        plan_settings: User plan settings
+        
+    Returns:
+        List of content suggestions
+    """
+    try:
+        # Use plan-specific model
+        model = plan_settings.get("gpt_model", "gpt-4o-mini") if plan_settings else "gpt-4o-mini"
+        
+        # Prepare SERP context
+        serp_titles = []
+        serp_snippets = []
+        if serp_data:
+            for result in serp_data[:5]:  # Top 5 results
+                if isinstance(result, dict):
+                    serp_titles.append(result.get('title', ''))
+                    serp_snippets.append(result.get('snippet', ''))
+        
+        serp_context = f"""
+TOP SERP TITLES:
+{chr(10).join(f"- {title}" for title in serp_titles[:5])}
+
+TOP SERP SNIPPETS:
+{chr(10).join(f"- {snippet[:100]}..." for snippet in serp_snippets[:3])}
+"""
+        
+        prompt = f"""Based on this content brief and SERP analysis, provide 5 specific, actionable content suggestions.
+
+CONTENT BRIEF:
+{brief[:1000]}
+
+{serp_context}
+
+Generate 5 specific suggestions for creating better content than competitors:
+
+1. Content gaps to fill
+2. Unique angles to explore  
+3. Better formatting/structure ideas
+4. Additional topics to cover
+5. Engagement improvements
+
+Keep each suggestion under 50 words and actionable."""
+
+        # Get OpenAI client
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return ["OpenAI API key not configured"]
+        
+        client = OpenAI(api_key=api_key)
+        
+        # Make API call
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are an expert content strategist specializing in competitive content analysis."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=800
+        )
+        
+        suggestions_text = response.choices[0].message.content
+        
+        # Parse suggestions from numbered list
+        import re
+        suggestions = []
+        lines = suggestions_text.split('\n')
+        for line in lines:
+            match = re.match(r'\d+\.\s*(.+)', line.strip())
+            if match:
+                suggestions.append(match.group(1).strip())
+        
+        return suggestions[:5] if suggestions else ["Analysis complete - ready for content creation"]
+        
+    except Exception as e:
+        print(f"Error generating suggestions: {str(e)}")
+        return [f"Unable to generate suggestions: {str(e)}"]
+
+
 def show_analysis(ai_analysis: Dict[str, Any]) -> None:
     """
-    STUB: Display AI keyword analysis in the UI.
-    TODO: Implement rich UI components for analysis display
+    Display AI keyword analysis in the UI with enhanced GPT-powered insights.
     
     Args:
         ai_analysis: Analysis data from analyze_keywords_with_gpt
@@ -329,36 +637,81 @@ def show_analysis(ai_analysis: Dict[str, Any]) -> None:
         st.info("💎 Upgrade to Premium for advanced keyword analysis!")
         return
     
-    st.markdown("### 🧠 AI Keyword Analysis")
+    st.markdown("### � AI Keyword Clustering + Quick Wins")
     
-    # Insights section
-    insights = ai_analysis.get("insights", {})
-    col1, col2, col3, col4 = st.columns(4)
+    # Check if we have new GPT analysis format
+    if "raw_analysis" in ai_analysis:
+        # Display summary metrics first
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Keywords Analyzed", ai_analysis.get("keywords_analyzed", 0))
+        with col2:
+            total_volume = ai_analysis.get("total_search_volume", 0)
+            st.metric("Total Volume", f"{total_volume:,}")
+        with col3:
+            avg_comp = ai_analysis.get("avg_competition", 0)
+            st.metric("Avg Competition", f"{avg_comp:.0%}")
+        with col4:
+            avg_cpc = ai_analysis.get("avg_cpc", 0)
+            st.metric("Avg CPC", f"${avg_cpc:.2f}")
+        
+        st.divider()
+        
+        # Display the full GPT analysis
+        st.markdown("#### 📊 Detailed Analysis")
+        st.markdown(ai_analysis["raw_analysis"])
+        
+        # Extract and display Quick Win keywords as buttons
+        quick_wins = extract_quick_win_keywords(ai_analysis["raw_analysis"])
+        if quick_wins:
+            st.divider()
+            st.markdown("### 🚀 Generate Brief from Quick Win")
+            st.markdown("Click any Quick Win keyword to generate a complete content brief with SERP analysis:")
+            
+            cols = st.columns(min(len(quick_wins), 3))
+            for i, keyword in enumerate(quick_wins):
+                with cols[i % 3]:
+                    if st.button(f"📝 {keyword}", key=f"quick_win_{i}", help=f"Generate brief for '{keyword}'"):
+                        st.session_state.selected_keyword = keyword
+                        st.session_state.selected_keyword_source = "Quick Win"
+                        st.session_state.quick_win_active = True
+                        st.rerun()
+        
+        # Model and timestamp info
+        st.caption(f"Analysis powered by {ai_analysis.get('model_used', 'AI')} • "
+                  f"Generated {time.strftime('%H:%M:%S', time.localtime(ai_analysis.get('analysis_timestamp', time.time())))}")
     
-    with col1:
-        st.metric("Total Keywords", insights.get("total_keywords", 0))
-    with col2:
-        st.metric("Avg Difficulty", f"{insights.get('avg_difficulty', 0)}/100")
-    with col3:
-        st.metric("High Opportunities", insights.get("high_opportunity_count", 0))
-    with col4:
-        st.metric("Competition", insights.get("competition_level", "Unknown"))
-    
-    # Opportunities section
-    st.markdown("#### 🎯 Top Opportunities")
-    opportunities = ai_analysis.get("opportunities", [])
-    for opp in opportunities:
-        priority_color = {"High": "🔴", "Medium": "🟡", "Low": "🟢"}.get(opp.get("priority", "Low"), "⚪")
-        st.markdown(f"{priority_color} **{opp.get('keyword', '')}** - {opp.get('reason', '')}")
-    
-    # Recommendations section
-    st.markdown("#### 💡 AI Recommendations")
-    recommendations = ai_analysis.get("recommendations", [])
-    for i, rec in enumerate(recommendations, 1):
-        st.markdown(f"{i}. {rec}")
-    
-    # Model info
-    st.caption(f"Analysis powered by {ai_analysis.get('model_used', 'AI')}")
+    else:
+        # Fallback to old format for compatibility
+        # Insights section (old format)
+        insights = ai_analysis.get("insights", {})
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Total Keywords", insights.get("total_keywords", 0))
+        with col2:
+            st.metric("Avg Difficulty", f"{insights.get('avg_difficulty', 0)}/100")
+        with col3:
+            st.metric("High Opportunities", insights.get("high_opportunity_count", 0))
+        with col4:
+            st.metric("Competition", insights.get("competition_level", "Unknown"))
+        
+        # Opportunities section
+        st.markdown("#### 🎯 Top Opportunities")
+        opportunities = ai_analysis.get("opportunities", [])
+        for opp in opportunities:
+            priority_color = {"High": "🔴", "Medium": "🟡", "Low": "🟢"}.get(opp.get("priority", "Low"), "⚪")
+            st.markdown(f"{priority_color} **{opp.get('keyword', '')}** - {opp.get('reason', '')}")
+        
+        # Recommendations section
+        st.markdown("#### 💡 AI Recommendations")
+        recommendations = ai_analysis.get("recommendations", [])
+        for i, rec in enumerate(recommendations, 1):
+            st.markdown(f"{i}. {rec}")
+        
+        # Model info
+        st.caption(f"Analysis powered by {ai_analysis.get('model_used', 'AI')}")
 
 def check_keyword_analysis_availability(plan_settings: dict = None) -> bool:
     """
