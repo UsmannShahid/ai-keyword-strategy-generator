@@ -228,7 +228,11 @@ def get_or_generate_data(data_type: str, keyword: str, force_refresh: bool = Fal
     if data_type == "brief":
         from ...core.services import generate_brief_with_variant
         variant = params.get("variant", "A")
-        output, prompt, latency, usage = generate_brief_with_variant(keyword=keyword, variant=variant)
+        output, prompt, latency, usage = generate_brief_with_variant(
+            keyword=keyword, 
+            variant=variant,
+            plan_settings=st.session_state.get('plan_settings', {})
+        )
         new_data = {
             "output": output,
             "prompt": prompt,
@@ -248,7 +252,12 @@ def get_or_generate_data(data_type: str, keyword: str, force_refresh: bool = Fal
         country = params.get("country", st.session_state.get("country_input", "US"))
         language = params.get("language", st.session_state.get("language_input", "en"))
         
-        serp_data = fetch_serp_snapshot(keyword=keyword, country=country, language=language)
+        serp_data = fetch_serp_snapshot(
+            keyword=keyword, 
+            country=country, 
+            language=language,
+            plan_settings=st.session_state.get('plan_settings', {})
+        )
         new_data = serp_data
         
         # Update session state

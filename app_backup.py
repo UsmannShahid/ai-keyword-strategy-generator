@@ -39,18 +39,9 @@ safe_init_db()
 # --- GLOBAL UX: hero + state ---
 st.set_page_config(page_title="Keyword Quick Wins + AI Brief", page_icon="✨", layout="centered")
 
-# Initialize session state FIRST - before any other operations
-if "help_open" not in st.session_state:
-    st.session_state.help_open = False
-if "help_step" not in st.session_state:
-    st.session_state.help_step = 1
-
 # Initialize centralized state management
 # This replaces all the individual session state initializations
-
-# Ensure state manager is properly initialized
-if not hasattr(state_manager, '_initialized'):
-    state_manager._initialized = True
+state_manager._initialize_state()  # Ensure state is initialized when app runs
 
 def _open_help(step: Optional[int] = None):
     state_manager.open_help(step)
@@ -184,7 +175,7 @@ with col2:
         _open_help(state_manager.current_step)
 
 # Render dialog if flagged
-if st.session_state.get("help_open", False):
+if st.session_state.help_open:
     _help_dialog()
     # Reset the help_open state after showing dialog to prevent repeated popups
     st.session_state.help_open = False
@@ -310,18 +301,14 @@ def build_prompt(business_desc: str, industry: str = "", audience: str = "", loc
     )
     return "\n".join(parts)
 
-def get_keywords_json(prompt: str, plan_settings: dict = None):
+def get_keywords_json(prompt: str):
     """Legacy helper expected by tests. Uses chat.completions style mocked in tests.
     Returns parsed JSON content from first choice; propagates JSON errors.
     """
     if client is None:
         raise RuntimeError("OpenAI client not initialized")
-    
-    # Use plan-specific model or default to gpt-4o-mini
-    model = plan_settings.get("gpt_model", "gpt-4o-mini") if plan_settings else "gpt-4o-mini"
-    
     resp = client.chat.completions.create(
-        model=model,
+        model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.4,
     )
@@ -377,72 +364,11 @@ def to_dataframe(data: dict) -> pd.DataFrame:
 # Display step header
 step_header()
 
-# Add user plan toggle for development/testing
-st.markdown("### 🎯 Plan Selection (Dev Mode)")
-user_plan = st.radio(
-    "Choose your plan for testing:",
-    ["free", "paid"],
-    index=1,  # Default to paid for testing
-    horizontal=True,
-    help="This simulates free vs premium tier features. Later this will be pulled from database/auth system."
-)
-
-# Store in session state for access throughout the app
-st.session_state.user_plan = user_plan
-
-# Plan-based configuration object
-PLAN_CONFIG = {
-    "free": {
-        "gpt_model": "gpt-3.5-turbo",
-        "serp_provider": "searchapi",
-        "keyword_analysis_enabled": False,
-        "max_keywords": 10,
-        "max_briefs_per_day": 3,
-        "serp_results_limit": 5,
-        "cache_ttl_hours": 6
-    },
-    "paid": {
-        "gpt_model": "gpt-4",
-        "serp_provider": "serpapi",
-        "keyword_analysis_enabled": True,
-        "max_keywords": 50,
-        "max_briefs_per_day": 50,
-        "serp_results_limit": 20,
-        "cache_ttl_hours": 24
-    }
-}
-
-# Get plan-specific settings
-plan_settings = PLAN_CONFIG[user_plan]
-
-# Store plan settings in session state for global access
-st.session_state.plan_settings = plan_settings
-
-# Visual indicator of current plan with features
-if user_plan == "free":
-    st.info(f"""
-    🆓 **Free Plan Active**
-    - Model: {plan_settings['gpt_model']}
-    - SERP Provider: {plan_settings['serp_provider']}
-    - Max Keywords: {plan_settings['max_keywords']}
-    - Daily Briefs: {plan_settings['max_briefs_per_day']}
-    """)
-else:
-    st.success(f"""
-    💎 **Premium Plan Active**
-    - Model: {plan_settings['gpt_model']}
-    - SERP Provider: {plan_settings['serp_provider']}
-    - Advanced Analysis: ✅
-    - Unlimited Keywords & Briefs
-    """)
-
-st.divider()
-
 # Render current step using extracted renderers
 render_current_step()
 
-# ------------- Modern Sidebar -----------
-with st.sidebar:
+# ------------- Clean implementation - sidebar handled in step_renderers.py -----------
+# Note: Sidebar is now rendered within step_renderers.py for better organization
     # Header with app branding
     st.markdown("""
     <div style="text-align: center; padding: 1rem 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; margin-bottom: 1.5rem;">
@@ -505,6 +431,50 @@ with st.sidebar:
     with col2:
         if st.button("❓ Help", use_container_width=True, help="Get help for current step"):
             state_manager.open_help(current_step)
+    
+    # Export section for active sessions
+    session_id = st.session_state.get("current_session_id")
+    if session_id and current_step >= 3:  # Only show after brief is generated
+        st.markdown("### 📄 Export Session")
+        if st.button("📄 Export to Markdown", use_container_width=True, help="Export complete session as Markdown"):
+            with st.spinner("Exporting session..."):
+                try:
+                    from src.utils.db_utils import safe_get_full_session_data
+                    session_data = safe_get_full_session_data(session_id)
+                    
+                    if session_data and session_data.get("session"):
+                        # Import export function with path handling
+                        import sys
+                        import os
+                        base_dir = os.path.dirname(__file__)
+                        ai_tool_dir = os.path.join(base_dir, 'ai-keyword-tool')
+                        if ai_tool_dir not in sys.path:
+                            sys.path.append(ai_tool_dir)
+                        
+                        from core.export import export_to_markdown
+                        filepath = export_to_markdown(session_id, session_data)
+                        
+                        # Show success message
+                        st.success("✅ Session exported!")
+                        st.caption(f"📁 {os.path.basename(filepath)}")
+                        
+                        # Offer download
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        
+                        st.download_button(
+                            "💾 Download",
+                            data=content,
+                            file_name=os.path.basename(filepath),
+                            mime="text/markdown",
+                            use_container_width=True
+                        )
+                    else:
+                        st.error("❌ No session data found")
+                except Exception as e:
+                    st.error(f"❌ Export failed: {str(e)}")
+        
+        st.divider()
     
     # A/B Testing link
     try:

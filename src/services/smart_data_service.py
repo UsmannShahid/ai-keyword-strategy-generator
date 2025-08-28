@@ -51,7 +51,8 @@ class SmartDataService:
         try:
             output, prompt, latency, usage = generate_brief_with_variant(
                 keyword=keyword, 
-                variant=variant
+                variant=variant,
+                plan_settings=st.session_state.get('plan_settings', {})
             )
             
             brief_data = {
@@ -121,7 +122,8 @@ class SmartDataService:
             serp_data = fetch_serp_snapshot(
                 keyword=keyword,
                 country=country,
-                language=language
+                language=language,
+                plan_settings=st.session_state.get('plan_settings', {})
             )
             
             if serp_data:
