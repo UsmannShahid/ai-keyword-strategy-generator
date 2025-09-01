@@ -36,6 +36,7 @@ serps (id, session_id, data, created_at)
 
 ### Tech Stack
 - **Frontend**: Streamlit for interactive web interface
+- **API**: FastAPI for RESTful API endpoints
 - **Backend**: Python with OpenAI API integration
 - **Database**: SQLite for local data persistence
 - **AI Integration**: OpenAI GPT models for content generation
@@ -75,6 +76,70 @@ serps (id, session_id, data, created_at)
    ```bash
    streamlit run app.py
    ```
+
+## 🔌 FastAPI Integration
+
+The project now includes a FastAPI backend that provides RESTful API endpoints for programmatic access to the keyword and content generation features.
+
+### API Endpoints
+
+#### Core Endpoints
+- `GET /` - API status and available endpoints
+- `GET /ping` - Health check endpoint
+- `GET /health` - Application health status
+- `GET /docs` - Interactive API documentation (Swagger UI)
+- `GET /redoc` - Alternative API documentation (ReDoc)
+
+#### Content Generation Endpoints
+- `POST /generate-brief/` - Generate content brief for a keyword
+- `POST /suggest-keywords/` - Get keyword suggestions for a topic
+- `POST /serp/` - Fetch SERP data for keyword analysis
+- `POST /suggestions/` - Get AI-powered content suggestions
+
+### Running the API Server
+
+**Start the FastAPI server:**
+```bash
+python -m api.main
+```
+
+The API will be available at `http://127.0.0.1:8001`
+
+**Access interactive documentation:**
+- Swagger UI: `http://127.0.0.1:8001/docs`
+- ReDoc: `http://127.0.0.1:8001/redoc`
+
+### API Usage Examples
+
+**Generate content brief:**
+```bash
+curl -X POST "http://127.0.0.1:8001/generate-brief/" \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "digital marketing strategies", "user_plan": "free"}'
+```
+
+**Get keyword suggestions:**
+```bash
+curl -X POST "http://127.0.0.1:8001/suggest-keywords/" \
+  -H "Content-Type: application/json" \
+  -d '{"topic": "content marketing", "max_results": 10, "user_plan": "free"}'
+```
+
+### API Configuration
+
+The API supports different user plans with varying capabilities:
+
+**Free Plan:**
+- GPT-3.5 Turbo model
+- Serper.dev for SERP data
+- Max 10 keyword results
+- Basic features
+
+**Paid Plan:**
+- GPT-4 model
+- SearchAPI.io for enhanced SERP data
+- Max 25 keyword results  
+- Advanced keyword analysis
 
 ## 📊 Usage Workflow
 
@@ -163,10 +228,35 @@ ai-keyword-tool/
 ├── .gitignore         # Git ignore file
 ├── pytest.ini         # Pytest configuration
 ├── run_tests.py        # Test runner script
+├── api/               # FastAPI backend
+│   ├── __init__.py     # API package initialization
+│   ├── main.py         # FastAPI application entry point
+│   ├── core/           # Core API functionality
+│   │   ├── __init__.py
+│   │   ├── config.py   # Configuration and user plans
+│   │   ├── env.py      # Environment variable handling
+│   │   ├── gpt.py      # OpenAI integration
+│   │   ├── keywords.py # Keyword processing
+│   │   └── serp.py     # SERP data fetching
+│   ├── models/         # Pydantic data models
+│   │   ├── __init__.py
+│   │   └── schemas.py  # Request/response schemas
+│   └── routes/         # API route handlers
+│       ├── __init__.py
+│       ├── brief.py    # Content brief generation
+│       ├── keywords.py # Keyword suggestions
+│       ├── serp.py     # SERP data endpoints
+│       └── suggestions.py # Content suggestions
+├── src/               # Core application modules
+│   ├── core/          # Core business logic
+│   ├── ui/            # Streamlit UI components
+│   ├── utils/         # Utility functions
+│   └── services/      # Application services
 ├── tests/              # Test suite
 │   ├── __init__.py     # Package initialization
 │   ├── test_app.py     # Main test file
 │   └── README.md       # Testing documentation
+├── data/              # Data files and GKP keywords
 ├── venv/              # Virtual environment (not in git)
 └── README.md          # This file
 ```
@@ -185,10 +275,19 @@ ai-keyword-tool/
 
 ## Dependencies
 
+### Core Dependencies
 - streamlit: Web app framework
 - openai: OpenAI API client
 - python-dotenv: Environment variable management
 - pandas: Data manipulation and analysis
+- requests: HTTP client for SERP data fetching
+
+### API Dependencies
+- fastapi: Modern, fast web framework for APIs
+- uvicorn: ASGI server for FastAPI
+- pydantic: Data validation and serialization
+
+### Development Dependencies
 - pytest: Testing framework
 - pytest-mock: Mocking utilities for tests
 

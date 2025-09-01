@@ -5,3 +5,8 @@ pandas
 pytest
 pytest-mock
 requests
+
+# API server
+fastapi
+uvicorn[standard]
+pydantic

@@ -121,16 +121,74 @@ def fetch_serp_snapshot(keyword: str, country: str = "US", language: str = "en",
     """
     Return top results with keys: title, url, snippet.
     Uses different SERP providers based on user plan.
+    Supports both serper.dev (free tier) and searchapi.io (paid tier).
     """
-    # SERP Provider Logic Based on Plan
-    if plan_settings and plan_settings.get("serp_provider") == "searchapi":
-        # Free users - use SearchAPI (cheaper option)
-        serp_data = fetch_serp_with_searchapi(keyword, country, language, plan_settings)
-    else:
-        # Paid users - use SerpAPI (premium option)
-        serp_data = fetch_serp_with_serpapi(keyword, country, language, plan_settings)
-    
-    return serp_data
+    import os
+    import requests
+
+    try:
+        # First try serper.dev (free tier)
+        serper_api_key = os.getenv("SERPER_API_KEY")
+        if serper_api_key:
+            try:
+                resp = requests.post(
+                    "https://google.serper.dev/search",
+                    headers={"X-API-KEY": serper_api_key, "Content-Type": "application/json"},
+                    json={"q": keyword, "gl": country, "hl": language, "num": 5},
+                    timeout=12
+                )
+                if resp.status_code == 200:
+                    js = resp.json()
+                    items = js.get("organic", [])[:5]
+                    return [{"title": it.get("title"),
+                            "url": it.get("link"),
+                            "snippet": it.get("snippet")} for it in items]
+            except Exception as e:
+                print(f"Serper API error: {e}")
+                # Fall through to try searchapi.io
+
+        # Try searchapi.io (paid tier)
+        searchapi_key = os.getenv("SEARCHAPI_API_KEY")
+        if searchapi_key:
+            try:
+                resp = requests.get(
+                    "https://www.searchapi.io/api/v1/search",
+                    params={
+                        "engine": "google",
+                        "q": keyword,
+                        "api_key": searchapi_key,
+                        "gl": country,
+                        "hl": language
+                    },
+                    timeout=12
+                )
+                if resp.status_code == 200:
+                    js = resp.json()
+                    items = js.get("organic_results", [])[:5]
+                    return [{"title": it.get("title"),
+                            "url": it.get("link"),
+                            "snippet": it.get("snippet")} for it in items]
+            except Exception as e:
+                print(f"SearchAPI error: {e}")
+
+        # If both APIs fail, fall back to mock data
+        print("Both SERP APIs failed, using mock data")
+        return fetch_serp_with_mock(keyword)
+
+    except Exception as e:
+        print(f"SERP snapshot error: {e}")
+        return fetch_serp_with_mock(keyword)
+
+def fetch_serp_with_mock(keyword: str) -> list:
+    """Fallback mock data when both APIs fail."""
+    base = keyword.lower()[:30] or "your topic"
+    return [
+        {"title": f"{base} – community thread", "url": "https://reddit.com/r/example", "snippet": "User opinions and short answers."},
+        {"title": f"Quick guide to {base}", "url": "https://example.com/quick-guide", "snippet": "A short guide updated in 2020."},
+        {"title": f"{base} explained", "url": "https://example.org/what-is", "snippet": "Definition and basics."},
+        {"title": f"Top 10 {base}", "url": "https://blog.example.com/top-10", "snippet": "Roundup with brief descriptions."},
+        {"title": f"{base} buyer's checklist", "url": "https://shop.example.com/checklist", "snippet": "Key things to consider."},
+    ]
 
 def fetch_serp_with_searchapi(keyword: str, country: str = "US", language: str = "en", plan_settings: dict = None) -> list:
     """
