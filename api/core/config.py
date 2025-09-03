@@ -22,3 +22,20 @@ def get_settings(user_plan: PlanType) -> dict:
     if user_plan not in PLAN_CONFIG:
         user_plan = "free"
     return PLAN_CONFIG[user_plan]
+
+# Per-plan monthly quotas for actions
+PLAN_QUOTAS = {
+    "free": {
+        "brief_create": 3,      # per month
+        "serp_query": 30,
+        "kw_suggest": 50,       # GKP reads (cheap)
+        "product_description": 0,
+    },
+    "paid": {
+        "brief_create": 50,
+        "serp_query": 100,
+        "kw_suggest": 200,
+        "product_description": 100,
+    },
+    # future: "premium": {...}
+}

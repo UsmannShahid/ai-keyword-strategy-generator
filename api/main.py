@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routes import brief, serp, keywords, suggestions, product_description
+from .db import init_usage_tables
 
 # Optional: log routes on startup to aid debugging 404s
 from contextlib import asynccontextmanager
@@ -10,6 +11,10 @@ from contextlib import asynccontextmanager
 async def lifespan(app):
     # Startup
     try:
+        # Initialize usage/quotas tables
+        init_usage_tables()
+        print("Usage tables ensured.")
+
         print("Registered routes:")
         for r in app.routes:
             path = getattr(r, "path", None)
@@ -21,7 +26,7 @@ async def lifespan(app):
     yield
     # Shutdown (if needed)
 
-app = FastAPI(title="Keyword & Brief API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Keyword & Brief API", version="0.2.0", lifespan=lifespan)
 
 # CORS for local Next.js later (adjust origins as needed)
 app.add_middleware(

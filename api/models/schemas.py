@@ -6,19 +6,25 @@ class Plan(BaseModel):
     # Use Literal for strict allowed values to avoid Field(pattern) compatibility issues across Pydantic versions
     user_plan: Literal["free", "paid"] = "free"
 
-class GenerateBriefRequest(Plan):
+class WithUser(BaseModel):
+    # Temporary identity until auth is added
+    user_id: str = "dev-user"
+
+class GenerateBriefRequest(Plan, WithUser):
     keyword: str
 
 class GenerateBriefResponse(BaseModel):
     brief: str
+    meta: Optional[dict] = None
 
-class SerpRequest(Plan):
+class SerpRequest(Plan, WithUser):
     keyword: str
 
 class SerpResponse(BaseModel):
     serp: Any  # keep loose for now; later define structure
+    meta: Optional[dict] = None
 
-class SuggestKeywordsRequest(Plan):
+class SuggestKeywordsRequest(Plan, WithUser):
     topic: str
     max_results: int = 20
 
@@ -43,6 +49,7 @@ class SuggestKeywordsResponse(BaseModel):
     clusters: Optional[List[ClusterGroup]] = None
     quick_wins: Optional[List[str]] = None
     notes: Optional[str] = None
+    meta: Optional[dict] = None
 
 class SuggestionsRequest(BaseModel):
     brief: str
@@ -51,7 +58,7 @@ class SuggestionsRequest(BaseModel):
 class SuggestionsResponse(BaseModel):
     ideas: List[str]
 
-class ProductDescriptionRequest(Plan):
+class ProductDescriptionRequest(Plan, WithUser):
     product_name: str
     features: List[str]
     channel: Optional[str] = "ecommerce"   # ecommerce | amazon | etsy
@@ -64,3 +71,4 @@ class ProductDescriptionResponse(BaseModel):
     description: str
     seo_keywords: List[str]
     notes: Optional[str] = None
+    meta: Optional[dict] = None
