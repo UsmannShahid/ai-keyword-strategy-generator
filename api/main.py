@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routes import brief, serp, keywords, suggestions, product_description
+from . import admin as admin_metrics
 from .db import init_usage_tables
 
 # Optional: log routes on startup to aid debugging 404s
@@ -42,6 +43,7 @@ app.include_router(serp.router, prefix="/serp")
 app.include_router(keywords.router, prefix="/suggest-keywords")
 app.include_router(suggestions.router, prefix="/suggestions")
 app.include_router(product_description.router, prefix="/product-description")
+app.include_router(admin_metrics.router)
 
 @app.get("/")
 def root():

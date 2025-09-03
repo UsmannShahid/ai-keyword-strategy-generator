@@ -760,8 +760,107 @@ st.divider()
 # Initialize helpful features
 add_helpful_tooltips()
 
-# Render current step using extracted renderers
-render_current_step()
+# Admin Dashboard
+if st.session_state.get("show_admin", False):
+    import requests
+    import pandas as pd
+    from datetime import datetime
+    
+    st.title("⚙️ Admin Dashboard")
+    
+    # Back button
+    if st.button("← Back to Main App"):
+        st.session_state.show_admin = False
+        st.rerun()
+    
+    st.divider()
+    
+    # API base URL
+    API_BASE = "http://127.0.0.1:8001"
+    
+    # Admin key input
+    admin_key = st.text_input("Admin Key", type="password", help="Enter your admin key to access analytics")
+    
+    if admin_key:
+        headers = {"X-Admin-Key": admin_key}
+        
+        # Time range selector
+        st.subheader("📊 Analytics Dashboard")
+        days = st.selectbox("Time Range", [7, 30, 90, 365], index=1, format_func=lambda x: f"Last {x} days")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        try:
+            # Summary metrics
+            with col1:
+                st.markdown("### 📈 Summary")
+                summary_resp = requests.get(f"{API_BASE}/admin/metrics/summary?days={days}", headers=headers, timeout=5)
+                if summary_resp.status_code == 200:
+                    summary = summary_resp.json()
+                    st.metric("Total Events", summary["total_events"])
+                    st.metric("Total Users", summary["total_users"])
+                    st.metric("Paid Users", summary["paid_users"])
+                    st.metric("Paid Ratio", f"{summary['paid_ratio']:.1%}")
+                    st.metric("Total Tokens", f"{summary['tokens_total']:,}")
+                    if summary["avg_latency_ms"]:
+                        st.metric("Avg Latency", f"{summary['avg_latency_ms']:.0f}ms")
+                else:
+                    st.error(f"Error: {summary_resp.status_code}")
+            
+            # Event breakdown
+            with col2:
+                st.markdown("### 🔍 Event Breakdown")
+                if summary_resp.status_code == 200:
+                    counts = summary["counts"]
+                    for event_type, count in counts.items():
+                        st.metric(event_type.replace("_", " ").title(), count)
+            
+            # Top users
+            with col3:
+                st.markdown("### 👥 Top Users")
+                users_resp = requests.get(f"{API_BASE}/admin/metrics/users?days={days}&limit=10", headers=headers, timeout=5)
+                if users_resp.status_code == 200:
+                    users_data = users_resp.json()["items"]
+                    if users_data:
+                        df = pd.DataFrame(users_data)
+                        st.dataframe(df, use_container_width=True)
+                    else:
+                        st.info("No user data available")
+                else:
+                    st.error(f"Error: {users_resp.status_code}")
+            
+            # Funnel analysis
+            st.divider()
+            st.subheader("🔄 Conversion Funnel")
+            funnel_resp = requests.get(f"{API_BASE}/admin/metrics/funnel?days={days}", headers=headers, timeout=5)
+            if funnel_resp.status_code == 200:
+                funnel = funnel_resp.json()
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("#### Stage Users")
+                    stages = funnel["stages_users"]
+                    for stage, count in stages.items():
+                        st.metric(stage.replace("_", " ").title(), count)
+                
+                with col2:
+                    st.markdown("#### Conversion Rates")
+                    conversions = funnel["conversions"]
+                    for conv, rate in conversions.items():
+                        st.metric(conv, f"{rate:.1%}")
+            
+        except requests.exceptions.RequestException as e:
+            st.error(f"❌ Could not connect to API: {e}")
+            st.info("💡 Make sure your FastAPI server is running on http://127.0.0.1:8001")
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
+    
+    else:
+        st.info("🔐 Please enter your admin key to view analytics")
+
+else:
+    # Render current step using extracted renderers
+    render_current_step()
 
 # Progress celebrations moved to sidebar to avoid scrolling issues
 # Main content area stays clean and navigation-friendly
@@ -809,6 +908,13 @@ with st.sidebar:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.rerun()
+    
+    st.divider()
+    
+    # Admin Dashboard
+    if st.button("⚙️ Admin Dashboard", use_container_width=True, help="View analytics and admin features"):
+        st.session_state.show_admin = True
+        st.rerun()
     
     st.divider()
     
