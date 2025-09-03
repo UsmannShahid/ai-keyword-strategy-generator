@@ -2,6 +2,24 @@
 
 An intelligent keyword research and content strategy tool powered by AI that helps you discover quick-win opportunities and generate comprehensive content briefs.
 
+## 🆕 Latest Updates (September 2025)
+
+### Freemium API Implementation
+- **Plan-Based Access Control**: Complete freemium model with free and paid tiers
+- **Usage Tracking**: SQLite-based quota management and analytics
+- **Advanced AI Features**: Keyword clustering, intent analysis, and quick-win identification for paid users
+
+### New API Endpoints
+- **Product Description Generator**: AI-powered ecommerce copy generation for Amazon, Etsy, and general ecommerce
+- **Enhanced Keyword Clustering**: GPT-4o-mini powered keyword grouping by search intent
+- **Smart Quota Management**: Automatic usage tracking with monthly quota resets
+
+### Technical Improvements
+- **Model Compatibility**: Upgraded to GPT-4o-mini with JSON mode support
+- **Error Handling**: Robust fallback mechanisms for AI service failures
+- **CORS Support**: Ready for frontend integration with proper middleware
+- **Database Schema**: Extended with user management and usage analytics tables
+
 ## ✨ Features
 
 ### 🎯 Smart Keyword Discovery
@@ -9,17 +27,27 @@ An intelligent keyword research and content strategy tool powered by AI that hel
 - **Quick-Win Scoring**: AI-powered scoring to identify rankable opportunities
 - **SERP Analysis**: Real-time search engine results analysis
 - **Competitor Intelligence**: Automated competitor content gap analysis
+- **AI Clustering**: Advanced keyword grouping by search intent (Paid Plan)
+- **Quick Win Identification**: AI-powered identification of rankable opportunities
 
 ### 🧠 AI-Powered Content Strategy
 - **Dynamic Content Briefs**: AI-generated content briefs tailored to your keyword
 - **Strategic Suggestions**: Personalized quick wins, content ideas, and technical SEO recommendations
 - **SERP-Based Insights**: Content opportunities based on competitor analysis
+- **Product Descriptions**: AI-generated ecommerce copy with SEO optimization (Paid Plan)
+
+### 💳 Freemium Business Model
+- **Free Tier**: Basic keyword suggestions, limited content briefs, GPT-3.5 Turbo
+- **Paid Tier**: Advanced clustering, unlimited features, GPT-4o-mini, product descriptions
+- **Usage Tracking**: SQLite-based quota management and usage analytics
+- **Plan-Based Access Control**: Feature gating based on subscription level
 
 ### 💾 Advanced Session Management
 - **Persistent Storage**: SQLite database for session and content persistence
 - **Session Tracking**: Every analysis is saved and can be revisited
 - **Data Relationships**: Links between sessions, briefs, suggestions, and SERP data
 - **Export Ready**: Structured data ready for report generation
+- **Usage Analytics**: Track API usage, quotas, and user engagement
 
 ## 🏗️ Architecture
 
@@ -32,6 +60,11 @@ briefs (id, session_id, content, created_at)
 -- Enhanced AI features  
 suggestions (id, session_id, variant, content, created_at)
 serps (id, session_id, data, created_at)
+
+-- NEW: Usage tracking and plan management
+users (id, email, plan)
+usage_logs (id, user_id, action, qty, ts)
+quotas (plan, action, monthly_limit)
 ```
 
 ### Tech Stack
@@ -92,9 +125,10 @@ The project now includes a FastAPI backend that provides RESTful API endpoints f
 
 #### Content Generation Endpoints
 - `POST /generate-brief/` - Generate content brief for a keyword
-- `POST /suggest-keywords/` - Get keyword suggestions for a topic
+- `POST /suggest-keywords/` - Get keyword suggestions with AI clustering (Plan-based)
 - `POST /serp/` - Fetch SERP data for keyword analysis
 - `POST /suggestions/` - Get AI-powered content suggestions
+- `POST /product-description/` - Generate ecommerce product descriptions (Paid Plan)
 
 ### Running the API Server
 
@@ -118,30 +152,98 @@ curl -X POST "http://127.0.0.1:8001/generate-brief/" \
   -d '{"keyword": "digital marketing strategies", "user_plan": "free"}'
 ```
 
-**Get keyword suggestions:**
+**Get keyword suggestions with AI clustering (Paid Plan):**
 ```bash
 curl -X POST "http://127.0.0.1:8001/suggest-keywords/" \
   -H "Content-Type: application/json" \
-  -d '{"topic": "content marketing", "max_results": 10, "user_plan": "free"}'
+  -d '{
+    "topic": "content marketing", 
+    "max_results": 20, 
+    "user_plan": "paid",
+    "user_id": "user123"
+  }'
+```
+
+**Generate product description (Paid Plan):**
+```bash
+curl -X POST "http://127.0.0.1:8001/product-description/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "product_name": "Wireless Bluetooth Headphones",
+    "features": ["Noise cancellation", "30-hour battery", "Fast charging"],
+    "channel": "amazon",
+    "tone": "professional",
+    "length": "medium",
+    "user_plan": "paid"
+  }'
 ```
 
 ### API Configuration
 
-The API supports different user plans with varying capabilities:
+The API supports a comprehensive freemium model with plan-based feature access:
 
-**Free Plan:**
+**Free Plan Features:**
 - GPT-3.5 Turbo model
-- Serper.dev for SERP data
-- Max 10 keyword results
-- Basic features
+- Basic keyword suggestions (max 10 results)
+- Limited content briefs (3/month)
+- Basic SERP data access (30 queries/month)
+- No AI clustering or product descriptions
 
-**Paid Plan:**
-- GPT-4 model
-- SearchAPI.io for enhanced SERP data
-- Max 25 keyword results  
-- Advanced keyword analysis
+**Paid Plan Features:**
+- GPT-4o-mini model with JSON mode support
+- Advanced keyword clustering with search intent analysis
+- Enhanced keyword suggestions (max 25 results)
+- Unlimited content briefs (50/month)
+- Premium SERP data access (100 queries/month)
+- AI-powered product description generation (100/month)
+- Quick-win keyword identification
 
-## 📊 Usage Workflow
+**Usage Tracking:**
+- SQLite-based quota management
+- Per-user usage analytics
+- Monthly quota resets
+- Plan upgrade notifications
+
+## � Freemium Business Model
+
+### Plan Comparison
+
+| Feature | Free Plan | Paid Plan |
+|---------|-----------|-----------|
+| **AI Model** | GPT-3.5 Turbo | GPT-4o-mini |
+| **Keyword Suggestions** | ✅ Basic (10 max) | ✅ Enhanced (25 max) |
+| **Content Briefs** | ✅ Limited (3/month) | ✅ Extended (50/month) |
+| **SERP Analysis** | ✅ Basic (30/month) | ✅ Premium (100/month) |
+| **AI Clustering** | ❌ | ✅ Intent-based grouping |
+| **Quick Win Analysis** | ❌ | ✅ AI-powered identification |
+| **Product Descriptions** | ❌ | ✅ Ecommerce copy (100/month) |
+| **Advanced Analytics** | ❌ | ✅ Usage insights |
+
+### Monthly Quotas
+```python
+free_plan = {
+    "brief_create": 3,
+    "serp_query": 30, 
+    "kw_suggest": 50,
+    "product_description": 0
+}
+
+paid_plan = {
+    "brief_create": 50,
+    "serp_query": 100,
+    "kw_suggest": 200, 
+    "product_description": 100
+}
+```
+
+### Upgrade Benefits
+- **Advanced AI Features**: Keyword clustering by search intent
+- **Product Description Generator**: Perfect for ecommerce businesses
+- **Higher Quotas**: More monthly API calls for growing businesses
+- **Better Models**: GPT-4o-mini with JSON mode for structured responses
+- **Priority Support**: Faster response times and dedicated assistance
+
+## �📊 Usage Workflow
 
 ### Step 1: Business Input
 - Describe your business/product
@@ -150,6 +252,7 @@ The API supports different user plans with varying capabilities:
 
 ### Step 2: Keyword Discovery
 - AI generates relevant keywords with quick-win scores
+- **Paid Plan**: Advanced clustering by search intent (informational, commercial, navigational)
 - Filter by score, include/exclude terms
 - Select target keyword for content strategy
 
@@ -167,6 +270,12 @@ The API supports different user plans with varying capabilities:
 - AI-generated content ideas
 - Technical SEO recommendations
 - Actionable next steps
+
+### Step 6: Product Descriptions (Paid Plan)
+- Generate optimized ecommerce copy
+- Support for Amazon, Etsy, and general ecommerce
+- SEO-optimized titles, bullets, and descriptions
+- Customizable tone and length
 ```bash
 python -m venv venv
 ```
@@ -231,22 +340,25 @@ ai-keyword-tool/
 ├── api/               # FastAPI backend
 │   ├── __init__.py     # API package initialization
 │   ├── main.py         # FastAPI application entry point
+│   ├── db.py           # Database utilities and usage tracking
 │   ├── core/           # Core API functionality
 │   │   ├── __init__.py
-│   │   ├── config.py   # Configuration and user plans
+│   │   ├── config.py   # Plan configuration and user plans
 │   │   ├── env.py      # Environment variable handling
-│   │   ├── gpt.py      # OpenAI integration
-│   │   ├── keywords.py # Keyword processing
-│   │   └── serp.py     # SERP data fetching
+│   │   ├── gpt.py      # OpenAI integration with product descriptions
+│   │   ├── keywords.py # Keyword processing with AI clustering
+│   │   ├── serp.py     # SERP data fetching
+│   │   └── usage.py    # Quota management and usage tracking
 │   ├── models/         # Pydantic data models
 │   │   ├── __init__.py
-│   │   └── schemas.py  # Request/response schemas
+│   │   └── schemas.py  # Request/response schemas with clustering models
 │   └── routes/         # API route handlers
 │       ├── __init__.py
 │       ├── brief.py    # Content brief generation
-│       ├── keywords.py # Keyword suggestions
+│       ├── keywords.py # Keyword suggestions with clustering
 │       ├── serp.py     # SERP data endpoints
-│       └── suggestions.py # Content suggestions
+│       ├── suggestions.py # Content suggestions
+│       └── product_description.py # NEW: Ecommerce copy generation
 ├── src/               # Core application modules
 │   ├── core/          # Core business logic
 │   ├── ui/            # Streamlit UI components
@@ -285,11 +397,16 @@ ai-keyword-tool/
 ### API Dependencies
 - fastapi: Modern, fast web framework for APIs
 - uvicorn: ASGI server for FastAPI
-- pydantic: Data validation and serialization
+- pydantic: Data validation and serialization with Literal types for plan validation
 
 ### Development Dependencies
 - pytest: Testing framework
 - pytest-mock: Mocking utilities for tests
+
+### New Dependencies (September 2025)
+- sqlite3: Built-in database for usage tracking and quota management
+- typing: Enhanced type hints for plan-based configurations
+- contextlib: Async context managers for application lifecycle
 
 ## Testing
 
