@@ -11,7 +11,7 @@ PLAN_CONFIG: Dict[PlanType, dict] = {
         "max_keyword_results": 10,
     },
     "paid": {
-        "gpt_model": "gpt-4",       # or gpt-4o / gpt-4 depending on access/cost
+        "gpt_model": "gpt-4o-mini",       # supports JSON mode
         "serp_provider": "searchapi",
         "keyword_analysis_enabled": True,
         "max_keyword_results": 25,

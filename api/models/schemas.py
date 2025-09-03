@@ -29,9 +29,20 @@ class KeywordItem(BaseModel):
     competition: Optional[float] = None
     source: str = "GKP"
 
+class ClusterKeyword(BaseModel):
+    keyword: str
+    reason: Optional[str] = None
+
+class ClusterGroup(BaseModel):
+    name: str                      # e.g., "Commercial / Buyer intent"
+    intent: str                    # informational | commercial | navigational
+    keywords: List[ClusterKeyword] # small curated list (5–10)
+
 class SuggestKeywordsResponse(BaseModel):
     keywords: List[KeywordItem]
-    clustered_markdown: Optional[str] = None  # for paid users later
+    clusters: Optional[List[ClusterGroup]] = None
+    quick_wins: Optional[List[str]] = None
+    notes: Optional[str] = None
 
 class SuggestionsRequest(BaseModel):
     brief: str
@@ -39,3 +50,17 @@ class SuggestionsRequest(BaseModel):
 
 class SuggestionsResponse(BaseModel):
     ideas: List[str]
+
+class ProductDescriptionRequest(Plan):
+    product_name: str
+    features: List[str]
+    channel: Optional[str] = "ecommerce"   # ecommerce | amazon | etsy
+    tone: Optional[str] = "neutral"
+    length: Optional[str] = "medium"       # short | medium | long
+
+class ProductDescriptionResponse(BaseModel):
+    title: str
+    bullets: List[str]
+    description: str
+    seo_keywords: List[str]
+    notes: Optional[str] = None
