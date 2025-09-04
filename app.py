@@ -857,6 +857,9 @@ if st.session_state.get("show_admin", False):
     
     else:
         st.info("🔐 Please enter your admin key to view analytics")
+    
+    # Stop here - don't render the main app when showing admin dashboard
+    st.stop()
 
 else:
     # Render current step using extracted renderers
