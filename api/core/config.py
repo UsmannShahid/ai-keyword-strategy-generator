@@ -30,12 +30,14 @@ PLAN_QUOTAS = {
         "serp_query": 30,
         "kw_suggest": 50,       # GKP reads (cheap)
         "product_description": 0,
+        "strategy_create": 2,   # comprehensive strategies
     },
     "paid": {
         "brief_create": 50,
         "serp_query": 100,
         "kw_suggest": 200,
         "product_description": 100,
+        "strategy_create": 25,
     },
     # future: "premium": {...}
 }

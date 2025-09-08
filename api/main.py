@@ -1,9 +1,9 @@
 # api/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import brief, serp, keywords, suggestions, product_description
-from . import admin as admin_metrics
-from .db import init_usage_tables
+from api.routes import brief, serp, keywords, suggestions, product_description, strategy
+from api import admin as admin_metrics
+from api.db import init_usage_tables
 
 # Optional: log routes on startup to aid debugging 404s
 from contextlib import asynccontextmanager
@@ -43,6 +43,7 @@ app.include_router(serp.router, prefix="/serp")
 app.include_router(keywords.router, prefix="/suggest-keywords")
 app.include_router(suggestions.router, prefix="/suggestions")
 app.include_router(product_description.router, prefix="/product-description")
+app.include_router(strategy.router, prefix="/generate-strategy")
 app.include_router(admin_metrics.router)
 
 @app.get("/")

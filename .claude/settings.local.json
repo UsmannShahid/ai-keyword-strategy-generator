@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(chcp:*)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\frontend/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\frontend/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\frontend\\src\\app/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\frontend/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\api\\core/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\api\\routes/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\api/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\api\\core/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\api\\routes/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\api\\routes/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\api\\routes/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\.venv/**)",
+      "Bash(for dir in ./api ./api/routes ./src ./src/core ./src/models ./src/services ./src/ui ./src/ui/components ./src/utils)",
+      "Bash(do echo -n \"$dir: \")",
+      "Bash(if [ -f \"$dir/__init__.py\" ])",
+      "Bash(then echo \"has __init__.py\")",
+      "Bash(else echo \"MISSING __init__.py\")",
+      "Bash(fi)",
+      "Bash(done)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\api/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\api/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\api/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\frontend/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\src\\utils/**)",
+      "Bash($env:PYTHONUTF8=1)",
+      "Bash(curl:*)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\frontend\\src\\app/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\frontend\\src\\app/**)",
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\frontend\\src\\app/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

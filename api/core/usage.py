@@ -43,3 +43,38 @@ def log_usage(user_id: str, action: str, qty: int = 1):
             (user_id, action, qty, datetime.utcnow().isoformat()),
         )
 
+
+def consume_quota(user_id: str, plan: str, action: str, need: int = 1):
+    """Atomically check and consume quota. Returns (success: bool, remaining: int)."""
+    limit = get_limit(plan, action)
+    now = datetime.utcnow()
+    start, end = _month_bounds(now)
+    
+    with get_conn() as conn:
+        # Begin transaction (SQLite automatically starts one with 'with' statement)
+        # First, count current usage within transaction
+        row = conn.execute(
+            """
+          SELECT COALESCE(SUM(qty),0) FROM usage_logs
+          WHERE user_id=? AND action=? AND ts BETWEEN ? AND ?
+        """,
+            (user_id, action, start, end),
+        ).fetchone()
+        
+        current_used = int(row[0] or 0)
+        remaining_before = max(limit - current_used, 0)
+        
+        # Check if we can consume the quota
+        if remaining_before < need:
+            return False, remaining_before
+        
+        # If we can consume, log the usage atomically
+        conn.execute(
+            "INSERT INTO usage_logs (user_id, action, qty, ts) VALUES (?, ?, ?, ?)",
+            (user_id, action, need, now.isoformat()),
+        )
+        
+        # Calculate new remaining after consumption
+        remaining_after = remaining_before - need
+        return True, remaining_after
+

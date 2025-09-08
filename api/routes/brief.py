@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from ..models.schemas import GenerateBriefRequest, GenerateBriefResponse
 from ..core.config import get_settings
 from ..core.gpt import generate_brief
-from api.core.usage import check_quota, log_usage
+from api.core.usage import consume_quota
 from src.analytics import log_event, timed
 
 router = APIRouter(tags=["brief"])
@@ -12,8 +12,9 @@ router = APIRouter(tags=["brief"])
 def create_brief(payload: GenerateBriefRequest):
     settings = get_settings(payload.user_plan)
 
-    allowed, remaining = check_quota(payload.user_id, payload.user_plan, "brief_create", 1)
-    if not allowed:
+    # Atomically consume quota before doing any work
+    success, remaining = consume_quota(payload.user_id, payload.user_plan, "brief_create", 1)
+    if not success:
         raise HTTPException(status_code=402, detail="Brief quota exceeded. Upgrade or wait until next month.")
 
     event_type = "brief_create"
@@ -21,10 +22,10 @@ def create_brief(payload: GenerateBriefRequest):
 
     try:
         with timed() as t:
-            brief_text = generate_brief(payload.keyword, model=settings["gpt_model"])
-            if not brief_text:
+            brief_data = generate_brief(payload.keyword, model=settings["gpt_model"], variant=payload.variant)
+            if not brief_data:
                 raise HTTPException(status_code=502, detail="Empty brief from model")
-        log_usage(payload.user_id, "brief_create", 1)
+        # No need to log_usage here - already done atomically in consume_quota
         log_event(
             user_id=payload.user_id,
             plan=payload.user_plan,
@@ -37,8 +38,8 @@ def create_brief(payload: GenerateBriefRequest):
             success=True,
         )
         return GenerateBriefResponse(
-            brief=brief_text,
-            meta={"remaining": {"brief_create": remaining - 1}},
+            brief=brief_data,
+            meta={"remaining": {"brief_create": remaining}},
         )
     except HTTPException:
         log_event(

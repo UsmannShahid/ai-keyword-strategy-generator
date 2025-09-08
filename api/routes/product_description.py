@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from api.models.schemas import ProductDescriptionRequest, ProductDescriptionResponse
 from api.core.config import get_settings
 from api.core.gpt import generate_product_description
-from api.core.usage import check_quota, log_usage
+from api.core.usage import consume_quota
 from src.analytics import log_event, timed
 
 router = APIRouter(tags=["product"])
@@ -15,8 +15,8 @@ def create_product_description(payload: ProductDescriptionRequest):
     endpoint = "/product-description"
 
     # Free users: allowed to hit endpoint but constrained by quota/plan
-    allowed, remaining = check_quota(payload.user_id, payload.user_plan, "product_description", 1)
-    if not allowed:
+    success, remaining = consume_quota(payload.user_id, payload.user_plan, "product_description", 1)
+    if not success:
         log_event(
             user_id=payload.user_id,
             plan=payload.user_plan,
@@ -47,7 +47,7 @@ def create_product_description(payload: ProductDescriptionRequest):
                 model=settings["gpt_model"],
             )
         
-        log_usage(payload.user_id, "product_description", 1)
+        # No need to log_usage - already done atomically in consume_quota
         log_event(
             user_id=payload.user_id,
             plan=payload.user_plan,
@@ -61,7 +61,7 @@ def create_product_description(payload: ProductDescriptionRequest):
         )
         
         return ProductDescriptionResponse(
-            **result, meta={"remaining": {"product_description": remaining - 1}}
+            **result, meta={"remaining": {"product_description": remaining}}
         )
     except Exception as e:
         log_event(

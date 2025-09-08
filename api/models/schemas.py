@@ -12,21 +12,29 @@ class WithUser(BaseModel):
 
 class GenerateBriefRequest(Plan, WithUser):
     keyword: str
+    variant: Optional[str] = "a"  # "a" or "b" for different brief variations
 
 class GenerateBriefResponse(BaseModel):
-    brief: str
+    brief: Any  # Now supports both dict (structured) and str (fallback)
     meta: Optional[dict] = None
 
 class SerpRequest(Plan, WithUser):
     keyword: str
+    country: Optional[str] = "US"
+    language: Optional[str] = "en"
 
 class SerpResponse(BaseModel):
     serp: Any  # keep loose for now; later define structure
+    analysis: Optional[dict] = None  # competitive analysis for paid plans
     meta: Optional[dict] = None
 
 class SuggestKeywordsRequest(Plan, WithUser):
     topic: str
     max_results: int = 20
+    industry: Optional[str] = None
+    audience: Optional[str] = None
+    country: Optional[str] = "US"
+    language: Optional[str] = "en"
 
 class KeywordItem(BaseModel):
     keyword: str
@@ -34,6 +42,9 @@ class KeywordItem(BaseModel):
     cpc: Optional[float] = None
     competition: Optional[float] = None
     source: str = "GKP"
+    # Optional extras to improve UX without breaking existing clients
+    opportunity_score: Optional[float] = None  # Changed from int to float
+    is_quick_win: Optional[bool] = None
 
 class ClusterKeyword(BaseModel):
     keyword: str
@@ -47,7 +58,7 @@ class ClusterGroup(BaseModel):
 class SuggestKeywordsResponse(BaseModel):
     keywords: List[KeywordItem]
     clusters: Optional[List[ClusterGroup]] = None
-    quick_wins: Optional[List[str]] = None
+    quick_wins: Optional[List[KeywordItem]] = None  # Changed from List[str] to List[KeywordItem]
     notes: Optional[str] = None
     meta: Optional[dict] = None
 
