@@ -1,0 +1,135 @@
+# ====== CRITICAL SECURITY - NO API KEYS ======
+# Environment files (NEVER commit these!)
+api/.env
+api/.env.*
+.env
+.env.*
+!.env.example
+!.env.template
+
+# API Keys in any format
+*.key
+*_key
+api_keys.*
+secrets.*
+credentials.*
+
+# ====== API DIRECTORY ======
+# Python
+api/__pycache__/
+api/*.py[cod]
+api/*$py.class
+api/*.so
+api/build/
+api/dist/
+api/*.egg-info/
+api/.pytest_cache/
+api/htmlcov/
+api/.coverage
+api/.tox/
+
+# Python virtual environments
+api/venv/
+api/env/
+api/.venv/
+
+# Python logs
+api/*.log
+api/logs/
+
+# Database files
+api/*.db
+api/*.sqlite*
+
+# ====== FRONTEND DIRECTORY ======
+# Dependencies
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.js
+
+# Production build
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/dist/
+
+# Debug logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+
+# Runtime data
+frontend/pids
+frontend/*.pid
+frontend/*.seed
+frontend/*.pid.lock
+
+# Environment variables
+frontend/.env
+frontend/.env.*
+frontend/!.env.example
+
+# Vercel deployment
+frontend/.vercel
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# ====== DEPLOYMENT & INFRASTRUCTURE ======
+# Railway
+.railway/
+railway.toml
+railway.json
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Kubernetes
+*.yaml
+*.yml
+k8s/
+
+# ====== DEVELOPMENT ======
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# ====== TESTING & MONITORING ======
+# Test coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# Monitoring and analytics
+.sentry/
+monitoring/
+
+# ====== DOCUMENTATION (if auto-generated) ======
+# Only ignore auto-generated docs, not manual ones
+# docs/auto-generated/
+
+# ====== SECURITY SCANNING RESULTS ======
+# Results that might contain sensitive info
+security-scan-results.*
+vulnerability-report.*
+audit-results.*

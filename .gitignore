@@ -96,3 +96,76 @@ temp/
 app_data.db
 *.jsonl
 /data/*.jsonl
+
+# ====== SECURITY - API KEYS & SECRETS ======
+# Environment files (contains API keys!)
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Free-version API environment files
+free-version/api/.env
+free-version/api/.env.*
+
+# API Keys and secrets (multiple formats)
+**/config/secrets.json
+**/config/production.json
+secrets.json
+api_keys.json
+credentials.json
+service-account.json
+
+# OpenAI API keys
+openai_key.txt
+openai.key
+*.key
+
+# Redis URLs and database credentials
+redis.conf
+database.conf
+
+# ====== FREE-VERSION SPECIFIC ======
+# Free-version build artifacts
+free-version/frontend/.next/
+free-version/frontend/out/
+free-version/frontend/build/
+free-version/frontend/dist/
+
+# Free-version dependencies
+free-version/frontend/node_modules/
+free-version/api/__pycache__/
+free-version/api/*.pyc
+
+# Free-version logs
+free-version/api/*.log
+free-version/frontend/*.log
+
+# Railway deployment files (may contain secrets)
+.railway/
+railway.toml
+
+# ====== ADDITIONAL SECURITY ======
+# Backup files that might contain secrets
+*.backup
+*.bak
+*_backup
+*_old
+
+# Docker files that might contain secrets
+docker-compose.override.yml
+.dockerignore
+
+# Deployment scripts that might contain credentials
+deploy.sh
+deploy.bat
+.deployment
+
+# IDE files that might contain API keys
+.vscode/settings.json
+.idea/workspace.xml
+
+# Cloud provider configs
+.aws/
+.gcp/
+.azure/
