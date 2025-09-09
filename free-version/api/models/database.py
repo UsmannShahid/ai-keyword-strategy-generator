@@ -104,3 +104,29 @@ class UserSession(Base):
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_active = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class SerpCache(Base):
+    """Cache SERP results from Serper.dev"""
+    __tablename__ = "serp_cache"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Search parameters (used as cache key)
+    keyword = Column(String(200), index=True)
+    country = Column(String(10), default="US")
+    language = Column(String(10), default="en")
+    
+    # SERP data from Serper.dev
+    serp_data = Column(JSON)  # Full SERP response
+    organic_results = Column(JSON)  # Top 10 organic results
+    total_results = Column(Integer, default=0)
+    
+    # Analysis data
+    search_intent = Column(String(50))  # informational, commercial, transactional, navigational
+    competition_analysis = Column(JSON)  # Domain authority, content analysis
+    
+    # Cache metadata
+    hit_count = Column(Integer, default=1)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

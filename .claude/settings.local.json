@@ -35,7 +35,8 @@
       "Bash(curl:*)",
       "Read(/D:\\Study\\AI\\ai-keyword-tool\\frontend\\src\\app/**)",
       "Read(/D:\\Study\\AI\\ai-keyword-tool\\frontend\\src\\app/**)",
-      "Read(/D:\\Study\\AI\\ai-keyword-tool\\frontend\\src\\app/**)"
+      "Read(/D:\\Study\\AI\\ai-keyword-tool\\frontend\\src\\app/**)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

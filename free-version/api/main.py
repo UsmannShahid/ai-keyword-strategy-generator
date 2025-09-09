@@ -4,13 +4,23 @@ Quick Wins Finder - Free Version API
 Simplified FastAPI backend for the free version
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import os
 from dotenv import load_dotenv
 import openai
+from datetime import datetime
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# Import database components
+from core.database import get_db
+from core.cache_service import CacheService
+from core.redis_client import redis_client, get_redis
+from core.hybrid_cache import HybridCacheService
+from core.rate_limiter import RateLimiter
+from models.database import KeywordQuery, ContentBrief, UserSession
 
 # Load environment
 load_dotenv()
@@ -18,9 +28,22 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = FastAPI(
     title="Quick Wins Finder API (Free)",
-    description="Simplified API for finding keyword quick wins",
-    version="1.0.0"
+    description="Simplified API for finding keyword quick wins with Redis caching",
+    version="1.1.0"
 )
+
+# Initialize services on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize Redis connection and services"""
+    await redis_client.connect()
+    print("🚀 Quick Wins Finder API started with Redis support")
+
+@app.on_event("shutdown") 
+async def shutdown_event():
+    """Clean up Redis connection"""
+    await redis_client.disconnect()
+    print("👋 API shutdown complete")
 
 # CORS middleware
 app.add_middleware(
@@ -61,8 +84,36 @@ class BriefRequest(BaseModel):
     variant: str = "a"
 
 # Helper functions
-def generate_keywords(topic: str, industry: str = "", audience: str = "", max_results: int = 10) -> List[Keyword]:
-    """Generate keywords using GPT-3.5-turbo with quick-wins scoring"""
+async def generate_keywords(topic: str, industry: str = "", audience: str = "", 
+                          max_results: int = 10, redis: RedisClient = None) -> List[Keyword]:
+    """Generate keywords using GPT-3.5-turbo with hybrid caching (Redis + PostgreSQL)"""
+    
+    # Use hybrid cache if Redis is available
+    if redis and await redis.is_connected():
+        hybrid_cache = HybridCacheService(redis)
+        
+        # Check hybrid cache (Redis L1 + PostgreSQL L2)
+        cached_result = await hybrid_cache.get_keywords(
+            topic=topic, industry=industry, audience=audience
+        )
+        
+        if cached_result:
+            keywords = []
+            for item in cached_result["keywords"]:
+                keywords.append(Keyword(**item))
+            return keywords[:max_results]
+    else:
+        # Fallback to PostgreSQL only
+        cached_result = await CacheService.get_cached_keywords(
+            topic=topic, industry=industry, audience=audience
+        )
+        
+        if cached_result:
+            print(f"🐘 Using PostgreSQL cached keywords for: {topic}")
+            keywords = []
+            for item in cached_result["keywords"]:
+                keywords.append(Keyword(**item))
+            return keywords[:max_results]
     
     try:
         # Create context-aware prompt
@@ -133,6 +184,31 @@ Format as JSON array:
         # Sort by quick wins first, then by opportunity score
         keywords.sort(key=lambda k: (not k.is_quick_win, -k.opportunity_score))
         
+        # Cache the results using hybrid cache if available
+        keywords_data = [k.dict() for k in keywords]
+        quick_wins_count = len([k for k in keywords if k.is_quick_win])
+        
+        if redis and await redis.is_connected():
+            hybrid_cache = HybridCacheService(redis)
+            await hybrid_cache.cache_keywords(
+                topic=topic,
+                keywords_data=keywords_data,
+                total=len(keywords),
+                quick_wins=quick_wins_count,
+                industry=industry,
+                audience=audience
+            )
+        else:
+            # Fallback to PostgreSQL only
+            await CacheService.cache_keywords(
+                topic=topic,
+                keywords_data=keywords_data,
+                total=len(keywords),
+                quick_wins=quick_wins_count,
+                industry=industry,
+                audience=audience
+            )
+        
         return keywords[:max_results]
         
     except Exception as e:
@@ -166,8 +242,21 @@ Format as JSON array:
         ]
         return fallback_keywords
 
-def generate_brief(keyword: str) -> str:
-    """Generate content brief using GPT-3.5-turbo"""
+async def generate_brief(keyword: str, redis: RedisClient = None) -> str:
+    """Generate content brief using GPT-3.5-turbo with hybrid caching"""
+    
+    # Use hybrid cache if Redis is available
+    if redis and await redis.is_connected():
+        hybrid_cache = HybridCacheService(redis)
+        cached_brief = await hybrid_cache.get_brief(keyword)
+        if cached_brief:
+            return cached_brief
+    else:
+        # Fallback to PostgreSQL only
+        cached_brief = await CacheService.get_cached_brief(keyword)
+        if cached_brief:
+            print(f"🐘 Using PostgreSQL cached brief for: {keyword}")
+            return cached_brief
     
     try:
         prompt = f"""
@@ -195,7 +284,17 @@ Make it actionable and specific. Write in a clear, professional tone.
             max_tokens=1000
         )
         
-        return response.choices[0].message.content.strip()
+        brief_content = response.choices[0].message.content.strip()
+        
+        # Cache the brief using hybrid cache if available
+        if redis and await redis.is_connected():
+            hybrid_cache = HybridCacheService(redis)
+            await hybrid_cache.cache_brief(keyword, brief_content)
+        else:
+            # Fallback to PostgreSQL only
+            await CacheService.cache_brief(keyword, brief_content)
+        
+        return brief_content
         
     except Exception as e:
         print(f"Error generating brief: {e}")
@@ -244,11 +343,38 @@ async def root():
     return {"message": "Quick Wins Finder API (Free Version)", "status": "running"}
 
 @app.get("/health")
-async def health_check():
-    return {"ok": True}
+async def health_check(redis: RedisClient = Depends(get_redis)):
+    redis_status = await redis.is_connected()
+    return {
+        "ok": True,
+        "redis_connected": redis_status,
+        "cache_strategy": "hybrid" if redis_status else "postgresql_only"
+    }
+
+@app.get("/cache-stats")
+async def get_cache_stats(redis: RedisClient = Depends(get_redis)):
+    """Get caching performance statistics"""
+    if redis and await redis.is_connected():
+        hybrid_cache = HybridCacheService(redis)
+        return await hybrid_cache.get_cache_stats()
+    else:
+        return {
+            "redis_connected": False,
+            "cache_strategy": "postgresql_only",
+            "message": "Redis caching not available"
+        }
+
+@app.get("/usage/{user_id}")
+async def get_user_usage(user_id: str, user_plan: str = "free", 
+                        redis: RedisClient = Depends(get_redis)):
+    """Get usage statistics for a user"""
+    rate_limiter = RateLimiter(redis)
+    return await rate_limiter.get_usage_stats(user_id, user_plan)
 
 @app.post("/suggest-keywords/")
-async def suggest_keywords(request: KeywordRequest):
+async def suggest_keywords(request: KeywordRequest, 
+                          db: AsyncSession = Depends(get_db),
+                          redis: RedisClient = Depends(get_redis)):
     """Generate keyword suggestions with quick-wins identification"""
     
     if not request.topic.strip():
@@ -257,13 +383,40 @@ async def suggest_keywords(request: KeywordRequest):
     # Limit to 10 for free version
     max_results = min(request.max_results, 10)
     
+    # Rate limiting
+    rate_limiter = RateLimiter(redis)
+    await rate_limiter.check_rate_limit(
+        request, "keywords", request.user_plan, request.user_id
+    )
+    
     try:
-        keywords = generate_keywords(
+        keywords = await generate_keywords(
             topic=request.topic,
             industry=request.industry or "",
             audience=request.audience or "",
-            max_results=max_results
+            max_results=max_results,
+            redis=redis
         )
+        
+        # Store the query in database
+        keywords_data = [k.dict() for k in keywords]
+        quick_wins_count = len([k for k in keywords if k.is_quick_win])
+        
+        query_record = KeywordQuery(
+            user_id=request.user_id,
+            topic=request.topic,
+            industry=request.industry or "",
+            audience=request.audience or "",
+            country=request.country,
+            language=request.language,
+            user_plan=request.user_plan,
+            keywords_data=keywords_data,
+            total_keywords=len(keywords),
+            quick_wins_count=quick_wins_count
+        )
+        
+        db.add(query_record)
+        await db.commit()
         
         return {
             "keywords": [k.dict() for k in keywords],
@@ -276,14 +429,34 @@ async def suggest_keywords(request: KeywordRequest):
         raise HTTPException(status_code=500, detail="Failed to generate keywords")
 
 @app.post("/generate-brief/")
-async def generate_content_brief(request: BriefRequest):
+async def generate_content_brief(request: BriefRequest, 
+                                db: AsyncSession = Depends(get_db),
+                                redis: RedisClient = Depends(get_redis)):
     """Generate content brief for a specific keyword"""
     
     if not request.keyword.strip():
         raise HTTPException(status_code=400, detail="Keyword is required")
     
+    # Rate limiting
+    rate_limiter = RateLimiter(redis)
+    await rate_limiter.check_rate_limit(
+        request, "briefs", request.user_plan, request.user_id
+    )
+    
     try:
-        brief_content = generate_brief(request.keyword)
+        brief_content = await generate_brief(request.keyword, redis)
+        
+        # Store the brief in database
+        brief_record = ContentBrief(
+            user_id=request.user_id,
+            keyword=request.keyword,
+            user_plan=request.user_plan,
+            variant=request.variant,
+            brief_content=brief_content
+        )
+        
+        db.add(brief_record)
+        await db.commit()
         
         brief = Brief(
             topic=request.keyword,

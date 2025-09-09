@@ -31,8 +31,8 @@ import {
   ExternalLink,
 } from "lucide-react";
 
-// API Configuration
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8002";
+// API Configuration - SERP Enhanced API
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8003";
 
 // Types
 type Keyword = {
