@@ -25,6 +25,8 @@ from slowapi.errors import RateLimitExceeded
 import httpx
 import asyncio
 import logging
+import math
+from dataclasses import dataclass
 
 # Load environment
 load_dotenv()
@@ -154,6 +156,281 @@ class SimpleSerperClient:
 # Global Serper client
 serper_client = SimpleSerperClient()
 
+# Multi-Factor Scoring System with Dynamic Difficulty Profiles
+from typing import Dict, Any, List, Tuple, Literal
+import re
+
+DifficultyMode = Literal["easy", "medium", "hard"]
+
+@dataclass(frozen=True)
+class MultiFactorParams:
+    # Dynamic weights based on difficulty mode
+    difficulty_mode: DifficultyMode = "medium"
+    
+    # Weight ranges for different components (will be adjusted based on mode)
+    volume_weight_range: Tuple[float, float] = (0.25, 0.45)      # 25-45%
+    competition_weight_range: Tuple[float, float] = (0.20, 0.40) # 20-40%  
+    cpc_weight_range: Tuple[float, float] = (0.15, 0.25)        # 15-25%
+    longtail_weight_range: Tuple[float, float] = (0.05, 0.15)   # 5-15%
+    commercial_weight: float = 0.05                              # 5%
+    
+    # Volume scoring parameters
+    volume_log_base: float = 10.0
+    volume_max_score: int = 10000    # Volume that gets max score
+    
+    # CPC scoring parameters  
+    cpc_optimal_range: Tuple[float, float] = (0.5, 3.0)  # Sweet spot for CPC
+    cpc_max_score: float = 5.0
+    
+    # Competition thresholds by difficulty mode (increased for more quick wins)
+    easy_max_competition: float = 0.5      # Increased from 0.4
+    medium_max_competition: float = 0.7    # Increased from 0.6
+    hard_max_competition: float = 1.0      # No filter
+    
+    # Opportunity score thresholds (0-100 scale)
+    excellent_threshold: int = 60    # 60-100: Excellent 
+    good_threshold: int = 40         # 40-60: Good
+    moderate_threshold: int = 20     # 20-40: Moderate
+    # 0-20: Difficult
+    
+    # Quick win threshold by difficulty mode (lowered for better quick win detection)
+    easy_quick_win_threshold: float = 45.0      # Lowered from 65.0
+    medium_quick_win_threshold: float = 55.0    # Lowered from 70.0
+    hard_quick_win_threshold: float = 65.0      # Lowered from 75.0
+
+def get_difficulty_weights(mode: DifficultyMode) -> Dict[str, float]:
+    """Get component weights based on difficulty mode"""
+    if mode == "easy":
+        return {
+            "volume": 0.30,      # 30%
+            "competition": 0.40, # 40% - Focus on low competition
+            "cpc": 0.15,         # 15%
+            "longtail": 0.10,    # 10%
+            "commercial": 0.05   # 5%
+        }
+    elif mode == "medium":
+        return {
+            "volume": 0.35,      # 35% 
+            "competition": 0.30, # 30% - Balanced approach
+            "cpc": 0.20,         # 20%
+            "longtail": 0.10,    # 10%
+            "commercial": 0.05   # 5%
+        }
+    else:  # hard
+        return {
+            "volume": 0.45,      # 45% - Volume-focused
+            "competition": 0.20, # 20%
+            "cpc": 0.25,         # 25%
+            "longtail": 0.05,    # 5%
+            "commercial": 0.05   # 5%
+        }
+
+def score_volume(volume: float, params: MultiFactorParams) -> float:
+    """Score volume using normalized logarithmic scaling (0-100)"""
+    if volume <= 0:
+        return 0.0
+    
+    # Logarithmic scaling with normalization
+    log_volume = math.log(max(1, volume), params.volume_log_base)
+    log_max = math.log(params.volume_max_score, params.volume_log_base)
+    
+    score = min(100.0, (log_volume / log_max) * 100.0)
+    return score
+
+def score_competition(competition: float) -> float:
+    """Score competition (inverted - lower competition = higher score) (0-100)"""
+    # Invert competition: 0 competition = 100 points, 1 competition = 0 points
+    return (1.0 - min(1.0, max(0.0, competition))) * 100.0
+
+def score_cpc(cpc: float, params: MultiFactorParams) -> float:
+    """Score CPC value (0-100) - higher CPC often means commercial value"""
+    if cpc <= 0:
+        return 0.0
+    
+    optimal_min, optimal_max = params.cpc_optimal_range
+    
+    if optimal_min <= cpc <= optimal_max:
+        # In optimal range - full score
+        return 100.0
+    elif cpc < optimal_min:
+        # Below optimal - scale from 0 to 100
+        return (cpc / optimal_min) * 100.0
+    else:
+        # Above optimal - diminishing returns
+        excess = cpc - optimal_max
+        decay_factor = math.exp(-excess / params.cpc_max_score)
+        return 100.0 * decay_factor
+
+def score_longtail(keyword: str) -> float:
+    """Score long-tail keywords (0-100) - 3+ word keywords get bonus"""
+    words = len(keyword.strip().split())
+    
+    if words >= 5:
+        return 100.0  # 5+ words = excellent
+    elif words == 4:
+        return 80.0   # 4 words = very good
+    elif words == 3:
+        return 60.0   # 3 words = good
+    elif words == 2:
+        return 30.0   # 2 words = moderate
+    else:
+        return 0.0    # 1 word = poor
+
+def classify_search_intent(keyword: str) -> str:
+    """Classify search intent into 4 categories with detailed analysis"""
+    keyword_lower = keyword.lower()
+    words = keyword_lower.split()
+    
+    # Transactional (Ready to buy/act)
+    transactional_signals = ['buy', 'purchase', 'order', 'shop', 'checkout', 'cart', 'pricing', 'price', 'cost', 'deal', 'discount', 'sale', 'coupon', 'offer', 'book', 'hire', 'subscribe']
+    
+    # Commercial (Comparing/researching before buying)
+    commercial_signals = ['best', 'top', 'review', 'reviews', 'compare', 'comparison', 'vs', 'versus', 'alternative', 'alternatives', 'cheap', 'affordable', 'budget', 'premium', 'professional']
+    
+    # Informational (Learning/how-to)
+    informational_signals = ['how', 'what', 'why', 'when', 'where', 'guide', 'tutorial', 'tips', 'learn', 'understand', 'explain', 'meaning', 'definition', 'examples', 'beginner', 'basics', 'setup', 'install']
+    
+    # Navigational (Looking for specific brand/site)
+    navigational_signals = ['login', 'sign in', 'dashboard', 'account', 'portal', 'official', 'website', 'app', 'download']
+    
+    # Count matches
+    transactional_matches = sum(1 for signal in transactional_signals if signal in keyword_lower)
+    commercial_matches = sum(1 for signal in commercial_signals if signal in keyword_lower)  
+    informational_matches = sum(1 for signal in informational_signals if signal in keyword_lower)
+    navigational_matches = sum(1 for signal in navigational_signals if signal in keyword_lower)
+    
+    # Determine primary intent (highest score wins)
+    scores = {
+        'Transactional': transactional_matches * 3,  # Weight transactional higher
+        'Commercial': commercial_matches * 2,        # Weight commercial moderately  
+        'Informational': informational_matches * 1,  # Base weight
+        'Navigational': navigational_matches * 2     # Weight navigational moderately
+    }
+    
+    # Special patterns
+    if any(word.startswith('how') for word in words):
+        scores['Informational'] += 2
+    if 'vs' in keyword_lower or 'versus' in keyword_lower:
+        scores['Commercial'] += 2
+    if any(word in ['buy', 'purchase', 'order'] for word in words[:2]):  # Early position matters
+        scores['Transactional'] += 2
+    
+    # Get the highest scoring intent
+    primary_intent = max(scores, key=scores.get)
+    
+    # If all scores are 0, default based on keyword structure
+    if scores[primary_intent] == 0:
+        if len(words) >= 3 and ('how' in words[0] or 'what' in words[0]):
+            return 'Informational'
+        elif any(brand in keyword_lower for brand in ['google', 'facebook', 'amazon', 'microsoft']):
+            return 'Navigational'
+        else:
+            return 'Informational'  # Default fallback
+    
+    return primary_intent
+
+def score_commercial_intent(keyword: str) -> float:
+    """Score commercial intent keywords (0-100) - now uses intent classification"""
+    intent = classify_search_intent(keyword)
+    
+    if intent == 'Transactional':
+        return 100.0  # Highest commercial value
+    elif intent == 'Commercial':
+        return 80.0   # High commercial value
+    elif intent == 'Navigational':
+        return 40.0   # Medium commercial value
+    else:  # Informational
+        return 20.0   # Lower commercial value (but still has some)
+
+def multifactor_score(
+    keyword: str,
+    volume: float,
+    competition: float,
+    cpc: float,
+    difficulty_mode: DifficultyMode = "medium",
+    params: MultiFactorParams = MultiFactorParams()
+) -> Dict[str, Any]:
+    """
+    Calculate multi-factor opportunity score (0-100) with dynamic difficulty profiles
+    """
+    
+    # Get weights for selected difficulty mode
+    weights = get_difficulty_weights(difficulty_mode)
+    
+    # Calculate component scores (all 0-100)
+    volume_score = score_volume(volume, params)
+    competition_score = score_competition(competition) 
+    cpc_score = score_cpc(cpc, params)
+    longtail_score = score_longtail(keyword)
+    commercial_score = score_commercial_intent(keyword)
+    
+    # Apply weights and calculate final score
+    final_score = (
+        weights["volume"] * volume_score +
+        weights["competition"] * competition_score +
+        weights["cpc"] * cpc_score +
+        weights["longtail"] * longtail_score +
+        weights["commercial"] * commercial_score
+    )
+    
+    # Determine opportunity level
+    if final_score >= params.excellent_threshold:
+        opportunity_level = "Excellent"
+    elif final_score >= params.good_threshold:
+        opportunity_level = "Good"  
+    elif final_score >= params.moderate_threshold:
+        opportunity_level = "Moderate"
+    else:
+        opportunity_level = "Difficult"
+    
+    # Check competition filter based on difficulty mode
+    competition_filter_passed = True
+    max_competition = {
+        "easy": params.easy_max_competition,
+        "medium": params.medium_max_competition, 
+        "hard": params.hard_max_competition
+    }[difficulty_mode]
+    
+    if competition > max_competition:
+        competition_filter_passed = False
+    
+    # Determine quick win status
+    quick_win_thresholds = {
+        "easy": params.easy_quick_win_threshold,
+        "medium": params.medium_quick_win_threshold,
+        "hard": params.hard_quick_win_threshold
+    }
+    
+    is_quick_win = (
+        competition_filter_passed and 
+        final_score >= quick_win_thresholds[difficulty_mode] and
+        volume >= 50  # Lowered minimum volume requirement from 100 to 50
+    )
+    
+    return {
+        "score": round(final_score, 1),
+        "opportunity_level": opportunity_level,
+        "is_quick_win": is_quick_win,
+        "difficulty_mode": difficulty_mode,
+        "competition_filter_passed": competition_filter_passed,
+        "components": {
+            "volume_score": round(volume_score, 1),
+            "competition_score": round(competition_score, 1),
+            "cpc_score": round(cpc_score, 1),
+            "longtail_score": round(longtail_score, 1),
+            "commercial_score": round(commercial_score, 1)
+        },
+        "weights": weights,
+        "raw_metrics": {
+            "keyword": keyword,
+            "volume": volume,
+            "competition": competition,
+            "cpc": cpc
+        }
+    }
+
+# Old V2 functions removed - now using multi-factor scoring
+
 # Models
 class Keyword(BaseModel):
     keyword: str
@@ -165,6 +442,7 @@ class Keyword(BaseModel):
     difficulty_score: Optional[int] = None
     search_intent: Optional[str] = None
     serp_enhanced: bool = False
+    intent_badge: str = "Unknown"  # Intent classification badge with default
 
 class KeywordRequest(BaseModel):
     topic: str
@@ -176,6 +454,7 @@ class KeywordRequest(BaseModel):
     country: str = "US"
     language: str = "en"
     use_serp_analysis: bool = True
+    difficulty_mode: DifficultyMode = "medium"  # New: Easy/Medium/Hard modes
 
 class Brief(BaseModel):
     topic: str
@@ -228,7 +507,8 @@ async def generate_keywords_with_serp(
     country: str = "US", 
     language: str = "en",
     max_results: int = 10,
-    use_serp_analysis: bool = True
+    use_serp_analysis: bool = True,
+    difficulty_mode: DifficultyMode = "medium"
 ) -> List[Keyword]:
     """Generate keywords enhanced with SERP analysis"""
     
@@ -248,24 +528,42 @@ async def generate_keywords_with_serp(
         context = f"Industry: {industry or 'General'}, Audience: {audience or 'General public'}"
         
         prompt = f"""
-Generate {max_results} keyword variations for the topic "{topic}".
+Generate {max_results} RANKABLE keyword variations for the topic "{topic}". Focus on keywords that smaller websites can actually rank for.
 
 Context: {context}
 
-For each keyword, provide:
-1. The keyword phrase
-2. Estimated monthly search volume (realistic numbers)
-3. Estimated CPC in USD
-4. Competition level (0.0-1.0, where 0 = no competition, 1 = maximum competition)
-5. Whether it's a "quick win" (low competition + decent volume)
+PRIORITIZE these types of rankable keywords:
+1. Long-tail keywords (3+ words) - better for ranking
+2. Intent-specific variations:
+   - INFORMATIONAL: "how to", "what is", "guide to", "tutorial"
+   - COMMERCIAL: "best", "top", "review", "vs", "comparison"  
+   - TRANSACTIONAL: "buy", "cheap", "price", "deal", "under $X"
+3. Problem-solving keywords: "fix", "solve", "troubleshoot"
+4. Beginner-focused: "for beginners", "easy", "simple", "basic"
+5. Year/seasonal: "2024", "2025", current trends
+6. Branded alternatives (if applicable): "like [competitor]", "alternative to [brand]"
 
-Quick win criteria:
-- Competition < 0.4
-- Volume > 100
-- Contains modifiers like "cheap", "best", "under $X", "for beginners", etc.
+KEYWORD STRUCTURE EXAMPLES:
+- "how to choose {topic} for beginners" (Informational)
+- "best budget {topic} under $100" (Commercial)
+- "buy {topic} online cheap" (Transactional)
+- "{topic} vs [competitor] comparison" (Commercial)
+- "free {topic} alternative to [brand]" (Commercial)
+
+For each keyword, provide:
+1. The keyword phrase (focus on long-tail, specific terms)
+2. Monthly search volume (100-5000 range for rankability)
+3. Estimated CPC in USD (higher CPC = more commercial value)
+4. Competition level (0.0-0.6 for rankable keywords)
+5. Mark as quick_win if competition < 0.4 AND volume > 100
+
+AVOID these hard-to-rank keywords:
+- Single broad terms
+- High-competition commercial terms  
+- Exact brand name searches
 
 Format as JSON array:
-[{{"keyword": "example", "volume": 1200, "cpc": 1.50, "competition": 0.3, "is_quick_win": true}}]
+[{{"keyword": "how to setup {topic} for beginners 2024", "volume": 800, "cpc": 1.20, "competition": 0.25, "is_quick_win": true}}]
 """
 
         response = openai.chat.completions.create(
@@ -298,20 +596,33 @@ Format as JSON array:
         for i, item in enumerate(keyword_data):
             keyword_text = item['keyword']
             
-            # Calculate base opportunity score
+            # Get keyword metrics
             volume = item.get('volume', 0)
             competition = item.get('competition', 1.0)
-            opportunity_score = int(min(100, max(0, (volume / 100) * (1 - competition) * 10)))
+            cpc = item.get('cpc', 0.0)
+            
+            # Calculate multi-factor score and classify intent
+            score_result = multifactor_score(
+                keyword=keyword_text,
+                volume=volume,
+                competition=competition,
+                cpc=cpc,
+                difficulty_mode=difficulty_mode
+            )
+            
+            # Classify search intent for badge
+            intent_badge = classify_search_intent(keyword_text)
             
             # Initialize keyword object
             keyword_obj = Keyword(
                 keyword=keyword_text,
-                volume=item.get('volume', 0),
-                cpc=item.get('cpc', 0.0),
-                competition=item.get('competition', 1.0),
-                opportunity_score=opportunity_score,
-                is_quick_win=item.get('is_quick_win', False),
-                serp_enhanced=False
+                volume=volume,
+                cpc=cpc,
+                competition=competition,
+                opportunity_score=int(score_result["score"]),
+                is_quick_win=score_result["is_quick_win"],
+                serp_enhanced=False,
+                intent_badge=intent_badge
             )
             
             # Enhance with SERP analysis for top keywords (limit API calls)
@@ -332,15 +643,18 @@ Format as JSON array:
                         keyword_obj.difficulty_score = difficulty_score
                         keyword_obj.serp_enhanced = True
                         
-                        # Adjust quick_win status based on SERP difficulty
-                        if difficulty_score <= 40 and volume > 100:
-                            keyword_obj.is_quick_win = True
-                        elif difficulty_score >= 70:
-                            keyword_obj.is_quick_win = False
+                        # Recalculate using multi-factor scoring with SERP difficulty data
+                        serp_competition = difficulty_score / 100.0  # Convert back to 0-1 scale
+                        enhanced_result = multifactor_score(
+                            keyword=keyword_text,
+                            volume=volume,
+                            competition=serp_competition,  # Use SERP difficulty
+                            cpc=keyword_obj.cpc,
+                            difficulty_mode=difficulty_mode
+                        )
                         
-                        # Adjust opportunity score with SERP data
-                        serp_factor = (100 - difficulty_score) / 100
-                        keyword_obj.opportunity_score = int(keyword_obj.opportunity_score * 0.6 + (serp_factor * 100) * 0.4)
+                        keyword_obj.opportunity_score = int(enhanced_result["score"])
+                        keyword_obj.is_quick_win = enhanced_result["is_quick_win"]
                         
                         logger.info(f"✅ SERP enhanced: {keyword_text} (difficulty: {difficulty_score}, intent: {search_intent})")
                 
@@ -361,18 +675,45 @@ Format as JSON array:
         
     except Exception as e:
         logger.error(f"Error generating keywords: {e}")
-        # Fallback keywords for demo
-        return [
-            Keyword(
-                keyword=f"{topic} for beginners",
-                volume=800,
-                cpc=1.20,
-                competition=0.25,
-                opportunity_score=75,
-                is_quick_win=True,
-                serp_enhanced=False
-            )
+        # Enhanced fallback keywords with intent variety and branded alternatives
+        fallback_data = [
+            {"keyword": f"how to choose {topic} for beginners", "volume": 800, "competition": 0.25, "cpc": 1.20},
+            {"keyword": f"best budget {topic} under $100", "volume": 600, "competition": 0.20, "cpc": 0.90},
+            {"keyword": f"{topic} vs alternatives comparison", "volume": 400, "competition": 0.35, "cpc": 1.80},
+            {"keyword": f"buy cheap {topic} online", "volume": 500, "competition": 0.40, "cpc": 2.10},
+            {"keyword": f"free {topic} alternative", "volume": 700, "competition": 0.30, "cpc": 0.60},
+            {"keyword": f"what is the best {topic} 2024", "volume": 350, "competition": 0.45, "cpc": 1.50},
+            {"keyword": f"{topic} tutorial for beginners", "volume": 450, "competition": 0.15, "cpc": 0.80},
         ]
+        
+        fallback_keywords = []
+        for item in fallback_data:
+            # Use multi-factor scoring for fallback keywords
+            score_result = multifactor_score(
+                keyword=item["keyword"],
+                volume=item["volume"],
+                competition=item["competition"],
+                cpc=item["cpc"],
+                difficulty_mode=difficulty_mode
+            )
+            
+            # Classify intent for fallback keywords too
+            intent_badge = classify_search_intent(item["keyword"])
+            
+            fallback_keywords.append(Keyword(
+                keyword=item["keyword"],
+                volume=item["volume"],
+                cpc=item["cpc"],
+                competition=item["competition"],
+                opportunity_score=int(score_result["score"]),
+                is_quick_win=score_result["is_quick_win"],
+                serp_enhanced=False,
+                intent_badge=intent_badge
+            ))
+        
+        # Sort and return top results
+        fallback_keywords.sort(key=lambda k: (not k.is_quick_win, -k.opportunity_score))
+        return fallback_keywords
 
 async def generate_brief_with_serp(keyword: str, country: str = "US", use_serp_analysis: bool = True) -> str:
     """Generate content brief enhanced with SERP analysis"""
@@ -498,13 +839,14 @@ async def suggest_keywords(request: Request, keywords_request: KeywordRequest):
             country=keywords_request.country,
             language=keywords_request.language,
             max_results=max_results,
-            use_serp_analysis=keywords_request.use_serp_analysis
+            use_serp_analysis=keywords_request.use_serp_analysis,
+            difficulty_mode=keywords_request.difficulty_mode
         )
         
         serp_enhanced_count = len([k for k in keywords if k.serp_enhanced])
         
         return {
-            "keywords": [k.dict() for k in keywords],
+            "keywords": [k.model_dump() for k in keywords],
             "total": len(keywords),
             "quick_wins": len([k for k in keywords if k.is_quick_win]),
             "serp_enhanced": serp_enhanced_count,
@@ -536,7 +878,7 @@ async def generate_content_brief(request: Request, brief_request: BriefRequest):
         )
         
         return {
-            "brief": brief.dict(),
+            "brief": brief.model_dump(),
             "serp_enhanced": brief_request.use_serp_analysis,
             "cached": True if redis_client else False
         }

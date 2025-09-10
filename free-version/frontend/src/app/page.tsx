@@ -84,6 +84,91 @@ async function apiCall<T>(url: string, body: any): Promise<T> {
   return res.json();
 }
 
+// Intent Detection Helper
+function detectSearchIntent(keyword: string): {
+  type: 'informational' | 'commercial' | 'transactional' | 'navigational';
+  icon: string;
+  color: string;
+  bgColor: string;
+} {
+  const lowerKeyword = keyword.toLowerCase();
+  
+  // Transactional intent patterns
+  const transactionalWords = [
+    'buy', 'purchase', 'price', 'cost', 'cheap', 'deal', 'discount', 'coupon', 
+    'sale', 'order', 'shop', 'store', 'affordable', 'budget', 'free shipping',
+    'checkout', 'payment', 'subscribe', 'sign up'
+  ];
+  
+  // Commercial intent patterns  
+  const commercialWords = [
+    'best', 'top', 'review', 'comparison', 'vs', 'compare', 'alternative',
+    'recommend', 'rating', 'testimonial', 'pros and cons', 'which is better',
+    'benefits', 'features', 'pricing', 'plans', 'trial'
+  ];
+  
+  // Informational intent patterns
+  const informationalWords = [
+    'how to', 'what is', 'why', 'when', 'where', 'guide', 'tutorial', 'tips',
+    'learn', 'examples', 'definition', 'meaning', 'explain', 'step by step',
+    'beginner', 'advanced', 'complete guide', 'ultimate guide'
+  ];
+  
+  // Navigational intent patterns
+  const navigationalWords = [
+    'login', 'sign in', 'website', 'official', 'homepage', 'contact', 'support',
+    'customer service', 'phone number', 'address', 'location', 'hours'
+  ];
+  
+  // Check for transactional intent
+  if (transactionalWords.some(word => lowerKeyword.includes(word))) {
+    return {
+      type: 'transactional',
+      icon: '🛒',
+      color: 'text-purple-700',
+      bgColor: 'bg-purple-100'
+    };
+  }
+  
+  // Check for commercial intent
+  if (commercialWords.some(word => lowerKeyword.includes(word))) {
+    return {
+      type: 'commercial',
+      icon: '💰',
+      color: 'text-green-700',
+      bgColor: 'bg-green-100'
+    };
+  }
+  
+  // Check for informational intent
+  if (informationalWords.some(word => lowerKeyword.includes(word))) {
+    return {
+      type: 'informational',
+      icon: '📚',
+      color: 'text-blue-700',
+      bgColor: 'bg-blue-100'
+    };
+  }
+  
+  // Check for navigational intent
+  if (navigationalWords.some(word => lowerKeyword.includes(word))) {
+    return {
+      type: 'navigational',
+      icon: '🧭',
+      color: 'text-orange-700',
+      bgColor: 'bg-orange-100'
+    };
+  }
+  
+  // Default to informational if no specific intent detected
+  return {
+    type: 'informational',
+    icon: '📚',
+    color: 'text-blue-700',
+    bgColor: 'bg-blue-100'
+  };
+}
+
 export default function QuickWinsFinder() {
   // Step tracking
   const [currentStep, setCurrentStep] = useState(1);
@@ -506,6 +591,9 @@ export default function QuickWinsFinder() {
                     <Sparkles className="h-5 w-5 text-[#D4AF37]" />
                     Quick Wins Discovery
                   </CardTitle>
+                  <p className="text-sm text-gray-500 mb-2">
+                    💡 <strong>Quick Wins</strong> are keywords with competition ≤50%, opportunity score ≥45, and volume ≥50 searches/month - easier to rank for and perfect for faster results.
+                  </p>
                   <div className="flex justify-between items-center">
                     <p className="text-gray-600">
                       Found <strong>{quickWins.length}</strong> quick wins out of {keywords.length} keywords
@@ -562,6 +650,66 @@ export default function QuickWinsFinder() {
                         </div>
                       </div>
 
+                      {/* Quick Win Success Tip */}
+                      <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-start gap-2">
+                          <Sparkles className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm text-green-800 font-medium">Quick Win Success Formula:</p>
+                            <p className="text-xs text-green-700 mt-1">
+                              Look for keywords with <strong>competition ≤ 50%</strong> + <strong>opportunity score ≥ 45</strong> + <strong>volume ≥ 50</strong> + commercial modifiers (best, cheap, under $X, for beginners)
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Intent Legend */}
+                      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                        <h5 className="text-sm font-medium text-gray-700 mb-2">Search Intent Guide:</h5>
+                        <div className="flex flex-wrap gap-3 text-xs">
+                          <div className="flex items-center gap-1">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+                              📚 Informational
+                            </span>
+                            <span className="text-gray-600">How-to, guides, tutorials</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full bg-green-100 text-green-700">
+                              💰 Commercial
+                            </span>
+                            <span className="text-gray-600">Best, reviews, comparisons</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+                              🛒 Transactional
+                            </span>
+                            <span className="text-gray-600">Buy, price, deals</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full bg-orange-100 text-orange-700">
+                              🧭 Navigational
+                            </span>
+                            <span className="text-gray-600">Login, website, brand</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Opportunity Score Guide */}
+                      <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-xs text-blue-800 font-medium mb-1">Scoring Guide:</p>
+                        <div className="flex flex-wrap gap-2 text-xs mb-2">
+                          <span className="px-2 py-1 bg-green-100 text-green-800 rounded">Opportunity 60-100: Excellent</span>
+                          <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded">40-59: Good</span>
+                          <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded">20-39: Moderate</span>
+                          <span className="px-2 py-1 bg-red-100 text-red-800 rounded">0-19: Difficult</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          <span className="px-2 py-1 bg-green-100 text-green-800 rounded">Competition 0-30%: Easy</span>
+                          <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded">31-60%: Medium</span>
+                          <span className="px-2 py-1 bg-red-100 text-red-800 rounded">61-100%: Hard</span>
+                        </div>
+                      </div>
+
                       {/* All Keywords Table */}
                       <div>
                         <h4 className="font-medium mb-3">All Keywords</h4>
@@ -570,6 +718,7 @@ export default function QuickWinsFinder() {
                             <thead>
                               <tr className="border-b border-gray-200 bg-gray-50">
                                 <th className="text-left py-2 px-3 font-medium">Keyword</th>
+                                <th className="text-center py-2 px-3 font-medium">Intent</th>
                                 <th className="text-right py-2 px-3 font-medium">Volume</th>
                                 <th className="text-right py-2 px-3 font-medium">Competition</th>
                                 <th className="text-right py-2 px-3 font-medium">Opportunity</th>
@@ -577,40 +726,52 @@ export default function QuickWinsFinder() {
                               </tr>
                             </thead>
                             <tbody>
-                              {keywords.map((kw, i) => (
-                                <tr key={i} className={`border-b border-gray-100 hover:bg-gray-50 ${kw.is_quick_win ? 'bg-green-50' : ''}`}>
-                                  <td className="py-3 px-3">
-                                    <span className="font-medium">{kw.keyword}</span>
-                                    {kw.is_quick_win && <span className="ml-2 text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">Quick Win</span>}
-                                  </td>
-                                  <td className="py-3 px-3 text-right">{kw.volume?.toLocaleString() || 'N/A'}</td>
-                                  <td className="py-3 px-3 text-right">
-                                    <span className={`${
-                                      (kw.competition || 0) <= 0.3 ? 'text-green-600' :
-                                      (kw.competition || 0) <= 0.6 ? 'text-yellow-600' : 'text-red-600'
-                                    }`}>
-                                      {Math.round((kw.competition || 0) * 100)}%
-                                    </span>
-                                  </td>
-                                  <td className="py-3 px-3 text-right">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                      (kw.opportunity_score || 0) >= 70 ? 'bg-green-100 text-green-800' :
-                                      (kw.opportunity_score || 0) >= 40 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
-                                    }`}>
-                                      {kw.opportunity_score || 0}
-                                    </span>
-                                  </td>
-                                  <td className="py-3 px-3 text-center">
-                                    <Button
-                                      onClick={() => selectKeyword(kw.keyword)}
-                                      size="sm"
-                                      variant="outline"
-                                    >
-                                      Select
-                                    </Button>
-                                  </td>
-                                </tr>
-                              ))}
+                              {keywords.map((kw, i) => {
+                                const intent = detectSearchIntent(kw.keyword);
+                                return (
+                                  <tr key={i} className={`border-b border-gray-100 hover:bg-gray-50 ${kw.is_quick_win ? 'bg-green-50' : ''}`}>
+                                    <td className="py-3 px-3">
+                                      <span className="font-medium">{kw.keyword}</span>
+                                      {kw.is_quick_win && <span className="ml-2 text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">Quick Win</span>}
+                                    </td>
+                                    <td className="py-3 px-3 text-center">
+                                      <span 
+                                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${intent.color} ${intent.bgColor}`}
+                                        title={`${intent.type.charAt(0).toUpperCase() + intent.type.slice(1)} Intent`}
+                                      >
+                                        <span className="mr-1">{intent.icon}</span>
+                                        {intent.type.charAt(0).toUpperCase() + intent.type.slice(1)}
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-3 text-right">{kw.volume?.toLocaleString() || 'N/A'}</td>
+                                    <td className="py-3 px-3 text-right">
+                                      <span className={`${
+                                        (kw.competition || 0) <= 0.3 ? 'text-green-600' :
+                                        (kw.competition || 0) <= 0.6 ? 'text-yellow-600' : 'text-red-600'
+                                      }`}>
+                                        {Math.round((kw.competition || 0) * 100)}%
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-3 text-right">
+                                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                        (kw.opportunity_score || 0) >= 70 ? 'bg-green-100 text-green-800' :
+                                        (kw.opportunity_score || 0) >= 40 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
+                                      }`}>
+                                        {kw.opportunity_score || 0}
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-3 text-center">
+                                      <Button
+                                        onClick={() => selectKeyword(kw.keyword)}
+                                        size="sm"
+                                        variant="outline"
+                                      >
+                                        Select
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>

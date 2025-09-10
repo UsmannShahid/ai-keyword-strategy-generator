@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import os
+import math
 from dotenv import load_dotenv
 import openai
 from datetime import datetime
@@ -17,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # Import database components
 from core.database import get_db
 from core.cache_service import CacheService
-from core.redis_client import redis_client, get_redis
+from core.redis_client import redis_client, get_redis, RedisClient
 from core.hybrid_cache import HybridCacheService
 from core.rate_limiter import RateLimiter
 from models.database import KeywordQuery, ContentBrief, UserSession
@@ -126,17 +127,26 @@ Context: {context}
 
 For each keyword, provide:
 1. The keyword phrase
-2. Estimated monthly search volume (realistic numbers)
-3. Estimated CPC in USD
+2. Estimated monthly search volume (realistic numbers, prioritize 500-10,000 range)
+3. Estimated CPC in USD (0.50-5.00 range)
 4. Competition level (0.0-1.0, where 0 = no competition, 1 = maximum competition)
-5. Whether it's a "quick win" (low competition + decent volume)
+5. Whether it's a "quick win" (use improved criteria below)
 
-Quick win criteria:
-- Competition < 0.4
-- Volume > 100
-- Contains modifiers like "cheap", "best", "under $X", "for beginners", etc.
+ENHANCED Quick Win Criteria (aim for 60-70% quick wins):
+- Competition ≤ 0.35 (low competition threshold)
+- Volume ≥ 200 (minimum viable volume)
+- CPC ≥ 0.75 (indicates commercial value)
+- Prefer 3+ word phrases (long-tail advantage)
+- Include intent modifiers: "best", "how to", "guide", "cheap", "affordable", "for beginners", "easy", "simple", "under $X", "vs", "review", "comparison", "tools", "software", "free", "tips"
 
-Format as JSON array:
+Priority keyword types for quick wins:
+- Long-tail informational: "how to [topic] for beginners"
+- Comparison keywords: "best [topic] tools under $50"
+- Problem-solving: "easy [topic] tips", "simple [topic] guide"
+- Local/niche modifiers: "[topic] for small business"
+- Alternative searches: "cheap [topic] alternative"
+
+Format as JSON array (ensure 60-70% have is_quick_win: true):
 [{{"keyword": "example", "volume": 1200, "cpc": 1.50, "competition": 0.3, "is_quick_win": true}}]
 """
 
@@ -167,21 +177,71 @@ Format as JSON array:
         
         keywords = []
         for item in keyword_data:
-            # Calculate opportunity score (simple formula)
+            # Enhanced multi-factor opportunity scoring
             volume = item.get('volume', 0)
             competition = item.get('competition', 1.0)
-            opportunity_score = int(min(100, max(0, (volume / 100) * (1 - competition) * 10)))
+            cpc = item.get('cpc', 0.0)
+            keyword_text = item.get('keyword', '')
+            is_quick_win = item.get('is_quick_win', False)
+            
+            # Multi-factor scoring components
+            # 1. Volume score (logarithmic scaling, 0-40 points)
+            volume_score = min(40, (math.log1p(volume) / math.log1p(10000)) * 40) if volume > 0 else 0
+            
+            # 2. Competition score (inverted, 0-30 points)
+            competition_score = (1 - competition) * 30
+            
+            # 3. CPC value score (indicates commercial value, 0-15 points)
+            cpc_score = min(15, (cpc / 5.0) * 15) if cpc > 0 else 5
+            
+            # 4. Long-tail bonus (3+ words get bonus, 0-10 points)
+            word_count = len(keyword_text.split())
+            longtail_bonus = min(10, max(0, (word_count - 2) * 3))
+            
+            # 5. Intent modifier bonus (commercial intent keywords, 0-5 points)
+            intent_words = ['best', 'cheap', 'affordable', 'guide', 'how to', 'tips', 'tools', 
+                          'software', 'review', 'comparison', 'vs', 'under', 'for beginners', 
+                          'easy', 'simple', 'free']
+            intent_bonus = 5 if any(word.lower() in keyword_text.lower() for word in intent_words) else 0
+            
+            # Calculate final opportunity score (0-100)
+            opportunity_score = int(min(100, max(0, 
+                volume_score + competition_score + cpc_score + longtail_bonus + intent_bonus
+            )))
+            
+            # Enhanced quick win detection (overrides LLM decision if score is high enough)
+            enhanced_quick_win = (
+                is_quick_win or  # Trust LLM decision
+                (competition <= 0.35 and volume >= 200 and opportunity_score >= 50) or  # Low comp + decent volume + good score
+                (competition <= 0.25 and volume >= 100 and opportunity_score >= 40) or  # Very low comp threshold
+                (competition <= 0.30 and word_count >= 3 and intent_bonus > 0)         # Long-tail with intent bonus
+            )
             
             keywords.append(Keyword(
-                keyword=item['keyword'],
-                volume=item.get('volume', 0),
-                cpc=item.get('cpc', 0.0),
-                competition=item.get('competition', 1.0),
+                keyword=keyword_text,
+                volume=volume,
+                cpc=cpc,
+                competition=competition,
                 opportunity_score=opportunity_score,
-                is_quick_win=item.get('is_quick_win', False)
+                is_quick_win=enhanced_quick_win
             ))
         
-        # Sort by quick wins first, then by opportunity score
+        # Post-processing: Ensure we have a good ratio of quick wins
+        total_keywords = len(keywords)
+        quick_wins = [k for k in keywords if k.is_quick_win]
+        quick_win_ratio = len(quick_wins) / total_keywords if total_keywords > 0 else 0
+        
+        # If quick win ratio is too low, promote some high-scoring keywords to quick wins
+        if quick_win_ratio < 0.4:  # Target at least 40% quick wins
+            non_quick_wins = [k for k in keywords if not k.is_quick_win]
+            non_quick_wins.sort(key=lambda k: k.opportunity_score, reverse=True)
+            
+            needed_quick_wins = int(total_keywords * 0.5) - len(quick_wins)  # Aim for 50%
+            for i in range(min(needed_quick_wins, len(non_quick_wins))):
+                if non_quick_wins[i].opportunity_score >= 35:  # Only promote reasonably good keywords
+                    non_quick_wins[i].is_quick_win = True
+        
+        # Sort by enhanced criteria: quick wins first, then by opportunity score
         keywords.sort(key=lambda k: (not k.is_quick_win, -k.opportunity_score))
         
         # Cache the results using hybrid cache if available
