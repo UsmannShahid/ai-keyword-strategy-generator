@@ -3,12 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev --turbopack -p 3005",
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@agent-infra/mcp-server-browser": "^1.2.23",
+    "@jpisnice/shadcn-ui-mcp-server": "^1.1.0",
+    "@modelcontextprotocol/sdk": "^1.17.5",
+    "@playwright/mcp": "^0.0.37",
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-progress": "^1.1.7",
     "@radix-ui/react-select": "^2.2.6",
@@ -20,6 +24,7 @@
     "next": "15.5.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "shadcn": "^3.2.1",
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {

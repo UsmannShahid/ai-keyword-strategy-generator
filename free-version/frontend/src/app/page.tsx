@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Card,
@@ -11,6 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -19,20 +21,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Search,
-  Loader2,
-  Download,
   Sparkles,
-  Target,
-  FileText,
+  Loader2,
   CheckCircle,
-  ArrowRight,
-  Edit3,
-  ExternalLink,
+  Building2,
+  Target,
+  Search,
+  FileText,
+  Download,
+  ChevronRight,
+  TrendingUp,
+  Lightbulb,
+  Copy,
+  Check,
+  RefreshCw,
 } from "lucide-react";
-
-// API Configuration - SERP Enhanced API
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8003";
 
 // Types
 type Keyword = {
@@ -42,920 +45,829 @@ type Keyword = {
   competition: number;
   opportunity_score: number;
   is_quick_win: boolean;
+  intent_badge?: string;
 };
 
 type Brief = {
   topic: string;
-  target_reader?: string;
-  search_intent?: string;
-  angle?: string;
-  outline?: string[];
-  key_entities?: string[];
-  faqs?: {q: string; a: string}[];
-  checklist?: string[];
-  summary?: string;
+  summary: string;
 };
 
-// Global country support
-const COUNTRY_NAMES: Record<string, string> = {
-  "US": "United States", "CA": "Canada", "GB": "United Kingdom", "AU": "Australia", 
-  "DE": "Germany", "FR": "France", "IT": "Italy", "ES": "Spain", "NL": "Netherlands", "SE": "Sweden",
-  "NO": "Norway", "DK": "Denmark", "FI": "Finland", "BE": "Belgium", "CH": "Switzerland", 
-  "AT": "Austria", "IE": "Ireland", "PT": "Portugal", "GR": "Greece", "PL": "Poland", 
-  "CZ": "Czech Republic", "HU": "Hungary", "SK": "Slovakia", "SI": "Slovenia", "EE": "Estonia",
-  "LV": "Latvia", "LT": "Lithuania", "JP": "Japan", "KR": "South Korea", "CN": "China", 
-  "HK": "Hong Kong", "TW": "Taiwan", "SG": "Singapore", "IN": "India", "BR": "Brazil",
-  "MX": "Mexico", "AR": "Argentina", "RU": "Russia", "ZA": "South Africa", "NG": "Nigeria", 
-  "EG": "Egypt", "TR": "Turkey", "SA": "Saudi Arabia", "AE": "UAE", "IL": "Israel"
-};
+// API Base URL
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8004";
 
-const VALID_COUNTRIES = Object.keys(COUNTRY_NAMES);
-
-async function apiCall<T>(url: string, body: any): Promise<T> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `${res.status} ${res.statusText}`);
-  }
-  return res.json();
-}
-
-// Intent Detection Helper
-function detectSearchIntent(keyword: string): {
-  type: 'informational' | 'commercial' | 'transactional' | 'navigational';
-  icon: string;
-  color: string;
-  bgColor: string;
-} {
-  const lowerKeyword = keyword.toLowerCase();
-  
-  // Transactional intent patterns
-  const transactionalWords = [
-    'buy', 'purchase', 'price', 'cost', 'cheap', 'deal', 'discount', 'coupon', 
-    'sale', 'order', 'shop', 'store', 'affordable', 'budget', 'free shipping',
-    'checkout', 'payment', 'subscribe', 'sign up'
-  ];
-  
-  // Commercial intent patterns  
-  const commercialWords = [
-    'best', 'top', 'review', 'comparison', 'vs', 'compare', 'alternative',
-    'recommend', 'rating', 'testimonial', 'pros and cons', 'which is better',
-    'benefits', 'features', 'pricing', 'plans', 'trial'
-  ];
-  
-  // Informational intent patterns
-  const informationalWords = [
-    'how to', 'what is', 'why', 'when', 'where', 'guide', 'tutorial', 'tips',
-    'learn', 'examples', 'definition', 'meaning', 'explain', 'step by step',
-    'beginner', 'advanced', 'complete guide', 'ultimate guide'
-  ];
-  
-  // Navigational intent patterns
-  const navigationalWords = [
-    'login', 'sign in', 'website', 'official', 'homepage', 'contact', 'support',
-    'customer service', 'phone number', 'address', 'location', 'hours'
-  ];
-  
-  // Check for transactional intent
-  if (transactionalWords.some(word => lowerKeyword.includes(word))) {
-    return {
-      type: 'transactional',
-      icon: '🛒',
-      color: 'text-purple-700',
-      bgColor: 'bg-purple-100'
-    };
-  }
-  
-  // Check for commercial intent
-  if (commercialWords.some(word => lowerKeyword.includes(word))) {
-    return {
-      type: 'commercial',
-      icon: '💰',
-      color: 'text-green-700',
-      bgColor: 'bg-green-100'
-    };
-  }
-  
-  // Check for informational intent
-  if (informationalWords.some(word => lowerKeyword.includes(word))) {
-    return {
-      type: 'informational',
-      icon: '📚',
-      color: 'text-blue-700',
-      bgColor: 'bg-blue-100'
-    };
-  }
-  
-  // Check for navigational intent
-  if (navigationalWords.some(word => lowerKeyword.includes(word))) {
-    return {
-      type: 'navigational',
-      icon: '🧭',
-      color: 'text-orange-700',
-      bgColor: 'bg-orange-100'
-    };
-  }
-  
-  // Default to informational if no specific intent detected
-  return {
-    type: 'informational',
-    icon: '📚',
-    color: 'text-blue-700',
-    bgColor: 'bg-blue-100'
-  };
-}
-
-export default function QuickWinsFinder() {
-  // Step tracking
+// Linear 5-Step Workflow Component
+export default function QuickWinsFinderFree() {
+  // Current step (1-5)
   const [currentStep, setCurrentStep] = useState(1);
-  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   
-  // Step 1: Onboarding (Business setup)
-  const [business, setBusiness] = useState("");
+  // Step 1: Business Setup (saved locally)
+  const [industry, setIndustry] = useState("");
   const [audience, setAudience] = useState("");
   const [country, setCountry] = useState("US");
-  const [language, setLanguage] = useState("en");
-  const [isOnboardingComplete, setIsOnboardingComplete] = useState(false);
   
-  // Step 2: Input (Seed keyword)
-  const [seedInput, setSeedInput] = useState("");
+  // Step 2: Seed Input
+  const [seedKeyword, setSeedKeyword] = useState("");
   
-  // Step 3: Discovery & Scoring
+  // Step 3: Keywords Discovery
   const [keywords, setKeywords] = useState<Keyword[]>([]);
-  const [quickWins, setQuickWins] = useState<Keyword[]>([]);
+  const [isLoadingKeywords, setIsLoadingKeywords] = useState(false);
   
   // Step 4: Brief Generation
-  const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
-  const [editingKeyword, setEditingKeyword] = useState<string>("");
+  const [selectedKeyword, setSelectedKeyword] = useState<string>("");
   const [brief, setBrief] = useState<Brief | null>(null);
+  const [isLoadingBrief, setIsLoadingBrief] = useState(false);
   
-  // Loading & Error states
-  const [loading, setLoading] = useState<{[key: string]: boolean}>({});
-  const [error, setError] = useState<string | null>(null);
+  // Step 5: Export Ready
+  const [isExportReady, setIsExportReady] = useState(false);
   
-  // Auto-load saved onboarding data (but don't auto-advance)
-  useEffect(() => {
-    const saved = localStorage.getItem('quickwins-onboarding');
-    if (saved) {
-      try {
-        const data = JSON.parse(saved);
-        setBusiness(data.business || '');
-        setAudience(data.audience || '');
-        setCountry(data.country || 'US');
-        // NEVER auto-advance - localStorage only used to pre-fill form
-        // User must always manually click "Continue"
-      } catch (error) {
-        // Clear invalid saved data
-        localStorage.removeItem('quickwins-onboarding');
+  // Copy functionality
+  const [copiedBrief, setCopiedBrief] = useState(false);
+
+  // Save business setup to localStorage
+  const saveBusinessSetup = () => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("quickwins_business", JSON.stringify({
+        industry,
+        audience,
+        country,
+        savedAt: new Date().toISOString()
+      }));
+    }
+  };
+
+  // Load business setup from localStorage
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("quickwins_business");
+      if (saved) {
+        try {
+          const data = JSON.parse(saved);
+          setIndustry(data.industry || "");
+          setAudience(data.audience || "");
+          setCountry(data.country || "US");
+        } catch {}
       }
     }
   }, []);
 
-  useEffect(() => {
-    if (business) {
-      localStorage.setItem('quickwins-onboarding', JSON.stringify({ 
-        business, 
-        audience, 
-        country, 
-        completed: isOnboardingComplete,
-        // Never set returning automatically - user must manually trigger this
-        returning: false
-      }));
-    }
-  }, [business, audience, country, isOnboardingComplete]);
-
-  const withLoading = async (key: string, fn: () => Promise<void>) => {
-    setLoading(prev => ({ ...prev, [key]: true }));
-    setError(null);
+  // Generate keywords
+  const generateKeywords = async () => {
+    if (!seedKeyword.trim()) return;
+    
+    setIsLoadingKeywords(true);
     try {
-      await fn();
-    } catch (e: any) {
-      setError(e.message || "Something went wrong");
-    } finally {
-      setLoading(prev => ({ ...prev, [key]: false }));
-    }
-  };
-
-  const completeOnboarding = () => {
-    if (!business.trim()) {
-      setError("Please fill in your business/niche");
-      return;
-    }
-    setIsOnboardingComplete(true);
-    setCurrentStep(2);
-    setCompletedSteps([1]);
-    setError(null);
-  };
-
-  const generateKeywords = () => withLoading("keywords", async () => {
-    const res = await apiCall<{ keywords: Keyword[] }>(`${API_BASE}/suggest-keywords/`, {
-      topic: seedInput,
-      user_id: `free-${Date.now()}`,
-      user_plan: "free",
-      max_results: 10,
-      industry: business || undefined,
-      audience: audience || undefined,
-      country: country,
-      language: language,
-    });
-    
-    setKeywords(res.keywords || []);
-    const wins = (res.keywords || []).filter(k => k.is_quick_win);
-    setQuickWins(wins);
-    
-    if (res.keywords?.length > 0) {
+      const response = await fetch(`${API_BASE}/suggest-keywords/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: seedKeyword,
+          user_id: "free-user",
+          max_results: 10,
+          industry: industry,
+          audience: audience,
+          country: country,
+          difficulty_mode: "easy"
+        }),
+      });
+      
+      if (!response.ok) throw new Error("Failed to generate keywords");
+      
+      const data = await response.json();
+      setKeywords(data.keywords || []);
       setCurrentStep(3);
-      setCompletedSteps([1, 2]);
-    } else {
-      throw new Error('No keywords found. Try examples like "microphone", "standing desk"');
+    } catch (error) {
+      console.error("Error:", error);
+      alert("Failed to generate keywords. Please try again.");
+    } finally {
+      setIsLoadingKeywords(false);
     }
-  });
+  };
 
-  const selectKeyword = (keyword: string) => {
+  // Generate brief
+  const generateBrief = async (keyword: string) => {
     setSelectedKeyword(keyword);
-    setEditingKeyword(keyword);
-    setBrief(null); // Reset brief when selecting new keyword
-    setCurrentStep(4);
-    setCompletedSteps([1, 2, 3]);
-  };
-
-  const updateKeywordAndRegenerateBrief = () => {
-    if (editingKeyword.trim() && editingKeyword !== selectedKeyword) {
-      setSelectedKeyword(editingKeyword.trim());
-      setBrief(null);
-      // Auto-generate brief for new keyword
-      generateBrief();
+    setIsLoadingBrief(true);
+    
+    try {
+      const response = await fetch(`${API_BASE}/generate-brief/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          keyword: keyword,
+          user_id: "free-user",
+        }),
+      });
+      
+      if (!response.ok) throw new Error("Failed to generate brief");
+      
+      const data = await response.json();
+      setBrief(data.brief);
+      setCurrentStep(4);
+      setIsExportReady(true);
+    } catch (error) {
+      console.error("Error:", error);
+      alert("Failed to generate brief. Please try again.");
+    } finally {
+      setIsLoadingBrief(false);
     }
   };
 
-  const generateBrief = () => withLoading("brief", async () => {
-    const keywordToUse = editingKeyword.trim() || selectedKeyword;
-    if (!keywordToUse) return;
-    
-    const res = await apiCall<{ brief: Brief }>(`${API_BASE}/generate-brief/`, {
-      keyword: keywordToUse,
-      user_id: `free-${Date.now()}`,
-      user_plan: "free",
-      variant: "a",
-    });
-    
-    setBrief(res.brief);
-    setSelectedKeyword(keywordToUse);
-    setEditingKeyword(keywordToUse);
-    setCurrentStep(5);
-    setCompletedSteps([1, 2, 3, 4]);
-  });
-
-  const exportKeywords = () => {
-    if (!keywords.length) return;
-    
-    const headers = ['Keyword', 'Volume', 'CPC', 'Competition', 'Opportunity Score', 'Quick Win'];
+  // Export functions
+  const exportToCSV = () => {
     const csvData = keywords.map(kw => [
       kw.keyword,
-      kw.volume || 0,
-      (kw.cpc || 0).toFixed(2),
-      Math.round((kw.competition || 0) * 100) + '%',
-      kw.opportunity_score || 0,
-      kw.is_quick_win ? 'Yes' : 'No'
+      kw.volume,
+      kw.competition,
+      kw.cpc,
+      kw.opportunity_score,
+      kw.is_quick_win ? "Yes" : "No",
+      kw.intent_badge || "Unknown"
     ]);
     
+    const headers = ["Keyword", "Volume", "Competition", "CPC", "Opportunity Score", "Quick Win", "Intent"];
     const csvContent = [headers, ...csvData]
-      .map(row => row.map(cell => `"${cell}"`).join(','))
-      .join('\n');
+      .map(row => row.map(cell => `"${cell}"`).join(","))
+      .join("\n");
     
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `quick-wins-${seedInput.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.csv`;
+    a.download = `keywords-${seedKeyword.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const exportToWord = () => {
-    if (!brief || !selectedKeyword) return;
+  const exportBrief = () => {
+    if (!brief) return;
     
-    // Create Word-compatible HTML content
-    const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Content Brief: ${selectedKeyword}</title>
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; margin: 40px; }
-        h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
-        h2 { color: #34495e; margin-top: 30px; }
-        .meta { background: #ecf0f1; padding: 15px; border-radius: 5px; margin: 20px 0; }
-    </style>
-</head>
-<body>
-    <h1>Content Brief: ${selectedKeyword}</h1>
-    <div class="meta">
-        <strong>Business:</strong> ${business}<br>
-        <strong>Target Audience:</strong> ${audience || 'General'}<br>
-        <strong>Region:</strong> ${COUNTRY_NAMES[country]}<br>
-        <strong>Generated:</strong> ${new Date().toLocaleDateString()}
-    </div>
-    <div>
-        ${brief.summary?.replace(/\n/g, '<br>') || 'Brief content not available'}
-    </div>
-</body>
-</html>`;
-    
-    const blob = new Blob([htmlContent], { type: 'application/msword' });
+    const content = `# Content Brief: ${brief.topic}\n\n${brief.summary}`;
+    const blob = new Blob([content], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `content-brief-${selectedKeyword.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.doc`;
+    a.download = `brief-${selectedKeyword.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.md`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const exportToGoogleDocs = () => {
-    if (!brief || !selectedKeyword) return;
-    
-    const title = encodeURIComponent(`Content Brief: ${selectedKeyword}`);
-    const content = encodeURIComponent(`\n\nBUSINESS: ${business}\nTARGET AUDIENCE: ${audience || 'General'}\nREGION: ${COUNTRY_NAMES[country]}\nGENERATED: ${new Date().toLocaleDateString()}\n\n${brief.summary || 'Brief content not available'}`);
-    
-    const googleDocsUrl = `https://docs.google.com/document/create?title=${title}&body=${content}`;
-    window.open(googleDocsUrl, '_blank');
+  // Step navigation
+  const goToStep = (step: number) => {
+    if (step <= currentStep || step === 1) {
+      setCurrentStep(step);
+    }
   };
 
-  const resetFlow = () => {
-    setCurrentStep(2);
-    setCompletedSteps([1]);
-    setSeedInput("");
-    setKeywords([]);
-    setQuickWins([]);
-    setSelectedKeyword(null);
-    setBrief(null);
-    setError(null);
+  const nextStep = () => {
+    if (currentStep < 5) {
+      setCurrentStep(currentStep + 1);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAF8] text-[#222]">
+    <div className="min-h-screen bg-gradient-to-br from-[#FAFAF8] via-[#FFF8F0] to-[#F5E6B3]">
       {/* Header */}
-      <div className="bg-white/70 backdrop-blur-xl border-b border-black/5 sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Sparkles className="h-8 w-8 text-[#D4AF37]" />
-            <h1 className="font-serif text-3xl font-bold">Quick Wins Finder</h1>
-            <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded-full">Free</span>
+      <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-xl border-b border-[#D4AF37]/20">
+        <div className="max-w-4xl mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Sparkles className="h-8 w-8 text-[#D4AF37]" />
+              <div>
+                <h1 className="text-2xl font-serif text-gray-900">Quick Wins Finder</h1>
+                <p className="text-sm text-gray-600">Find low-competition keywords in minutes</p>
+              </div>
+            </div>
+            
+            {/* Step Progress Indicator - Contextual Navigation */}
+            <div className="flex items-center gap-4">
+              {/* Current Step Indicator */}
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-[#D4AF37] text-white flex items-center justify-center text-sm font-bold">
+                  {currentStep}
+                </div>
+                <div className="text-sm">
+                  <div className="font-medium text-gray-900">
+                    Step {currentStep} of 5
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {currentStep === 1 && "Business Setup"}
+                    {currentStep === 2 && "Keyword Input"}
+                    {currentStep === 3 && "Keywords Found"}
+                    {currentStep === 4 && "Content Brief"}
+                    {currentStep === 5 && "Export & Complete"}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Progress Bar */}
+              <div className="flex-1 max-w-xs">
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-[#D4AF37] h-2 rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${(currentStep / 5) * 100}%` }}
+                  ></div>
+                </div>
+                <div className="text-xs text-gray-500 mt-1 text-center">
+                  {Math.round((currentStep / 5) * 100)}% Complete
+                </div>
+              </div>
+
+              {/* Navigation Buttons */}
+              <div className="flex items-center gap-2">
+                {currentStep > 1 && currentStep < 5 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => goToStep(currentStep - 1)}
+                    className="text-xs"
+                  >
+                    Previous
+                  </Button>
+                )}
+                {currentStep === 5 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setCurrentStep(1);
+                      setSeedKeyword("");
+                      setKeywords([]);
+                      setBrief(null);
+                      setSelectedKeyword("");
+                      setIsExportReady(false);
+                    }}
+                    className="text-xs"
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Start Over
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
-          <p className="text-gray-600 mt-1">Find winnable keywords and generate content briefs in minutes</p>
         </div>
       </div>
 
-      {/* Progress Indicator */}
-      <div className="max-w-4xl mx-auto px-6 py-6">
-        <div className="flex items-center justify-between mb-8">
-          {[
-            { step: 1, title: "Setup", icon: Target },
-            { step: 2, title: "Input", icon: Search },
-            { step: 3, title: "Discovery", icon: Sparkles },
-            { step: 4, title: "Brief", icon: FileText },
-            { step: 5, title: "Export", icon: Download },
-          ].map(({ step, title, icon: Icon }) => (
-            <div key={step} className="flex flex-col items-center">
-              <div className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${
-                completedSteps.includes(step) 
-                  ? 'bg-green-500 border-green-500 text-white' 
-                  : currentStep === step
-                  ? 'bg-[#D4AF37] border-[#D4AF37] text-black'
-                  : 'bg-gray-200 border-gray-300 text-gray-500'
-              }`}>
-                {completedSteps.includes(step) ? <CheckCircle className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
-              </div>
-              <span className="text-xs mt-1 font-medium">{title}</span>
-              {step < 5 && <ArrowRight className="h-4 w-4 text-gray-400 mt-2" />}
-            </div>
-          ))}
-        </div>
-
-        {/* Step Content */}
+      {/* Main Content */}
+      <div className="max-w-4xl mx-auto px-6 py-12">
         <AnimatePresence mode="wait">
-          {/* Step 1: Onboarding */}
+          {/* Step 1: Business Setup */}
           {currentStep === 1 && (
             <motion.div
               key="step1"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.4 }}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-8"
             >
-              <Card className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg">
+              <div className="text-center mb-12">
+                <h2 className="text-4xl font-serif text-gray-900 mb-4">
+                  Welcome to Quick Wins Finder
+                </h2>
+                <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                  Let's set up your business context to find the perfect keywords for your niche.
+                </p>
+              </div>
+
+              <Card className="bg-white/70 backdrop-blur-xl border-[#D4AF37]/20 shadow-xl">
                 <CardHeader>
-                  <CardTitle className="font-serif flex items-center gap-2">
-                    <Target className="h-5 w-5 text-[#D4AF37]" />
+                  <CardTitle className="flex items-center gap-2 text-2xl">
+                    <Building2 className="h-6 w-6 text-[#D4AF37]" />
                     Business Setup
                   </CardTitle>
-                  <p className="text-gray-600">Tell us about your business to get personalized keywords</p>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div>
-                    <Label className="text-sm font-medium">What's your business/niche?</Label>
+                    <Label className="text-base font-medium mb-3 block">
+                      What's your business or industry?
+                    </Label>
                     <Input
-                      placeholder="e.g., Digital Marketing Agency, Cleaning Services"
-                      value={business}
-                      onChange={(e) => setBusiness(e.target.value)}
-                      className="mt-1"
+                      value={industry}
+                      onChange={(e) => setIndustry(e.target.value)}
+                      placeholder="e.g., Digital Marketing, SaaS, E-commerce"
+                      className="text-base py-3 rounded-xl"
                     />
                   </div>
+
                   <div>
-                    <Label className="text-sm font-medium">Who's your target audience?</Label>
+                    <Label className="text-base font-medium mb-3 block">
+                      Who's your target audience?
+                    </Label>
                     <Input
-                      placeholder="e.g., Busy parents, Small business owners"
                       value={audience}
                       onChange={(e) => setAudience(e.target.value)}
-                      className="mt-1"
+                      placeholder="e.g., Small business owners, Students, Professionals"
+                      className="text-base py-3 rounded-xl"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium">Country</Label>
-                      <Select value={country} onValueChange={setCountry}>
-                        <SelectTrigger className="mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {VALID_COUNTRIES.map(code => (
-                            <SelectItem key={code} value={code}>
-                              {COUNTRY_NAMES[code] || code}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium">Language</Label>
-                      <Select value={language} onValueChange={setLanguage}>
-                        <SelectTrigger className="mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="en">English</SelectItem>
-                          <SelectItem value="es">Spanish</SelectItem>
-                          <SelectItem value="fr">French</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+
+                  <div>
+                    <Label className="text-base font-medium mb-3 block">
+                      Target Country
+                    </Label>
+                    <Select value={country} onValueChange={setCountry}>
+                      <SelectTrigger className="text-base py-3 rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="US">🇺🇸 United States</SelectItem>
+                        <SelectItem value="GB">🇬🇧 United Kingdom</SelectItem>
+                        <SelectItem value="CA">🇨🇦 Canada</SelectItem>
+                        <SelectItem value="AU">🇦🇺 Australia</SelectItem>
+                        <SelectItem value="DE">🇩🇪 Germany</SelectItem>
+                        <SelectItem value="FR">🇫🇷 France</SelectItem>
+                        <SelectItem value="ES">🇪🇸 Spain</SelectItem>
+                        <SelectItem value="IT">🇮🇹 Italy</SelectItem>
+                        <SelectItem value="NL">🇳🇱 Netherlands</SelectItem>
+                        <SelectItem value="SE">🇸🇪 Sweden</SelectItem>
+                        <SelectItem value="NO">🇳🇴 Norway</SelectItem>
+                        <SelectItem value="DK">🇩🇰 Denmark</SelectItem>
+                        <SelectItem value="FI">🇫🇮 Finland</SelectItem>
+                        <SelectItem value="BE">🇧🇪 Belgium</SelectItem>
+                        <SelectItem value="CH">🇨🇭 Switzerland</SelectItem>
+                        <SelectItem value="AT">🇦🇹 Austria</SelectItem>
+                        <SelectItem value="IE">🇮🇪 Ireland</SelectItem>
+                        <SelectItem value="PT">🇵🇹 Portugal</SelectItem>
+                        <SelectItem value="JP">🇯🇵 Japan</SelectItem>
+                        <SelectItem value="KR">🇰🇷 South Korea</SelectItem>
+                        <SelectItem value="SG">🇸🇬 Singapore</SelectItem>
+                        <SelectItem value="IN">🇮🇳 India</SelectItem>
+                        <SelectItem value="BR">🇧🇷 Brazil</SelectItem>
+                        <SelectItem value="MX">🇲🇽 Mexico</SelectItem>
+                        <SelectItem value="AR">🇦🇷 Argentina</SelectItem>
+                        <SelectItem value="ZA">🇿🇦 South Africa</SelectItem>
+                        <SelectItem value="RU">🇷🇺 Russia</SelectItem>
+                        <SelectItem value="CN">🇨🇳 China</SelectItem>
+                        <SelectItem value="PL">🇵🇱 Poland</SelectItem>
+                        <SelectItem value="CZ">🇨🇿 Czech Republic</SelectItem>
+                        <SelectItem value="HU">🇭🇺 Hungary</SelectItem>
+                        <SelectItem value="RO">🇷🇴 Romania</SelectItem>
+                        <SelectItem value="BG">🇧🇬 Bulgaria</SelectItem>
+                        <SelectItem value="HR">🇭🇷 Croatia</SelectItem>
+                        <SelectItem value="SK">🇸🇰 Slovakia</SelectItem>
+                        <SelectItem value="SI">🇸🇮 Slovenia</SelectItem>
+                        <SelectItem value="EE">🇪🇪 Estonia</SelectItem>
+                        <SelectItem value="LV">🇱🇻 Latvia</SelectItem>
+                        <SelectItem value="LT">🇱🇹 Lithuania</SelectItem>
+                        <SelectItem value="GR">🇬🇷 Greece</SelectItem>
+                        <SelectItem value="CY">🇨🇾 Cyprus</SelectItem>
+                        <SelectItem value="MT">🇲🇹 Malta</SelectItem>
+                        <SelectItem value="LU">🇱🇺 Luxembourg</SelectItem>
+                        <SelectItem value="IS">🇮🇸 Iceland</SelectItem>
+                        <SelectItem value="TR">🇹🇷 Turkey</SelectItem>
+                        <SelectItem value="IL">🇮🇱 Israel</SelectItem>
+                        <SelectItem value="AE">🇦🇪 United Arab Emirates</SelectItem>
+                        <SelectItem value="SA">🇸🇦 Saudi Arabia</SelectItem>
+                        <SelectItem value="EG">🇪🇬 Egypt</SelectItem>
+                        <SelectItem value="MA">🇲🇦 Morocco</SelectItem>
+                        <SelectItem value="NG">🇳🇬 Nigeria</SelectItem>
+                        <SelectItem value="KE">🇰🇪 Kenya</SelectItem>
+                        <SelectItem value="GH">🇬🇭 Ghana</SelectItem>
+                        <SelectItem value="TH">🇹🇭 Thailand</SelectItem>
+                        <SelectItem value="VN">🇻🇳 Vietnam</SelectItem>
+                        <SelectItem value="MY">🇲🇾 Malaysia</SelectItem>
+                        <SelectItem value="ID">🇮🇩 Indonesia</SelectItem>
+                        <SelectItem value="PH">🇵🇭 Philippines</SelectItem>
+                        <SelectItem value="TW">🇹🇼 Taiwan</SelectItem>
+                        <SelectItem value="HK">🇭🇰 Hong Kong</SelectItem>
+                        <SelectItem value="BD">🇧🇩 Bangladesh</SelectItem>
+                        <SelectItem value="PK">🇵🇰 Pakistan</SelectItem>
+                        <SelectItem value="LK">🇱🇰 Sri Lanka</SelectItem>
+                        <SelectItem value="NZ">🇳🇿 New Zealand</SelectItem>
+                        <SelectItem value="CO">🇨🇴 Colombia</SelectItem>
+                        <SelectItem value="PE">🇵🇪 Peru</SelectItem>
+                        <SelectItem value="CL">🇨🇱 Chile</SelectItem>
+                        <SelectItem value="EC">🇪🇨 Ecuador</SelectItem>
+                        <SelectItem value="VE">🇻🇪 Venezuela</SelectItem>
+                        <SelectItem value="UY">🇺🇾 Uruguay</SelectItem>
+                        <SelectItem value="PY">🇵🇾 Paraguay</SelectItem>
+                        <SelectItem value="BO">🇧🇴 Bolivia</SelectItem>
+                        <SelectItem value="CR">🇨🇷 Costa Rica</SelectItem>
+                        <SelectItem value="PA">🇵🇦 Panama</SelectItem>
+                        <SelectItem value="GT">🇬🇹 Guatemala</SelectItem>
+                        <SelectItem value="HN">🇭🇳 Honduras</SelectItem>
+                        <SelectItem value="SV">🇸🇻 El Salvador</SelectItem>
+                        <SelectItem value="NI">🇳🇮 Nicaragua</SelectItem>
+                        <SelectItem value="DO">🇩🇴 Dominican Republic</SelectItem>
+                        <SelectItem value="JM">🇯🇲 Jamaica</SelectItem>
+                        <SelectItem value="TT">🇹🇹 Trinidad and Tobago</SelectItem>
+                        <SelectItem value="BB">🇧🇧 Barbados</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <Button
-                    onClick={completeOnboarding}
-                    className="w-full bg-[#D4AF37] text-black hover:bg-[#B8941F] transition-all"
-                    disabled={!business.trim() || !audience.trim()}
+
+                  <Button 
+                    onClick={() => {
+                      saveBusinessSetup();
+                      nextStep();
+                    }}
+                    className="w-full bg-[#D4AF37] hover:bg-[#B8941F] text-white py-3 rounded-xl text-base font-medium"
+                    disabled={!industry.trim() || !audience.trim()}
                   >
                     Continue to Keyword Input
-                    <ArrowRight className="ml-2 h-4 w-4" />
+                    <ChevronRight className="ml-2 h-5 w-5" />
                   </Button>
                 </CardContent>
               </Card>
             </motion.div>
           )}
 
-          {/* Step 2: Input */}
+          {/* Step 2: Keyword Input */}
           {currentStep === 2 && (
             <motion.div
               key="step2"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.4 }}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-8"
             >
-              <Card className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg">
+              <div className="text-center mb-12">
+                <h2 className="text-4xl font-serif text-gray-900 mb-4">
+                  Enter Your Seed Keyword
+                </h2>
+                <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                  What topic do you want to rank for? We'll find low-competition variations.
+                </p>
+              </div>
+
+              <Card className="bg-white/70 backdrop-blur-xl border-[#D4AF37]/20 shadow-xl">
                 <CardHeader>
-                  <CardTitle className="font-serif flex items-center gap-2">
-                    <Search className="h-5 w-5 text-[#D4AF37]" />
+                  <CardTitle className="flex items-center gap-2 text-2xl">
+                    <Search className="h-6 w-6 text-[#D4AF37]" />
                     Keyword Discovery
                   </CardTitle>
-                  <p className="text-gray-600">Enter a seed keyword to find quick-win opportunities</p>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-sm text-blue-800">
-                      <strong>{business}</strong> targeting <strong>{audience}</strong> in <strong>{COUNTRY_NAMES[country]}</strong>
-                    </p>
-                  </div>
                   <div>
-                    <Label className="text-lg font-serif font-medium">Seed Keyword or Competitor URL</Label>
+                    <Label className="text-base font-medium mb-3 block">
+                      Seed Keyword or Topic
+                    </Label>
                     <Input
-                      placeholder='e.g., "microphone", "standing desk", "competitor.com"'
-                      value={seedInput}
-                      onChange={(e) => setSeedInput(e.target.value)}
-                      className="mt-2 text-base p-4 border-2 focus:border-[#D4AF37] focus:ring-0"
-                      onKeyPress={(e) => e.key === 'Enter' && !loading.keywords && seedInput.trim() && generateKeywords()}
+                      value={seedKeyword}
+                      onChange={(e) => setSeedKeyword(e.target.value)}
+                      placeholder="e.g., microphone, standing desk, digital marketing"
+                      className="text-lg py-4 rounded-xl"
+                      onKeyDown={(e) => e.key === 'Enter' && generateKeywords()}
                     />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Try longer phrases for better quick wins: "microphone under $50", "standing desk for small spaces"
+                  </div>
+
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-sm text-gray-600 mb-2">
+                      <strong>Context:</strong> {industry || "General"} • {audience || "General audience"} • {country}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      This context will help us find more relevant keywords for your business.
                     </p>
                   </div>
-                  <Button
-                    onClick={generateKeywords}
-                    disabled={loading.keywords || !seedInput.trim()}
-                    className="w-full bg-black text-[#F5E6B3] hover:bg-[#D4AF37] hover:text-black transition-all text-base py-3"
-                  >
-                    {loading.keywords ? (
-                      <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Analyzing Keywords...
-                      </>
-                    ) : (
-                      <>
-                        <Search className="mr-2 h-5 w-5" />
-                        Find Quick Wins (10 keywords)
-                      </>
-                    )}
-                  </Button>
+
+                  <div className="flex gap-4">
+                    <Button
+                      onClick={generateKeywords}
+                      disabled={!seedKeyword.trim() || isLoadingKeywords}
+                      className="flex-1 bg-[#D4AF37] hover:bg-[#B8941F] text-white py-3 rounded-xl text-base font-medium"
+                    >
+                      {isLoadingKeywords ? (
+                        <>
+                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                          Finding Keywords...
+                        </>
+                      ) : (
+                        <>
+                          <TrendingUp className="mr-2 h-5 w-5" />
+                          Find 10 Quick Wins
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      onClick={() => goToStep(1)}
+                      className="px-6 py-3 rounded-xl"
+                    >
+                      Back
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>
           )}
 
-          {/* Step 3: Discovery Results */}
+          {/* Step 3: Keywords Results */}
           {currentStep === 3 && keywords.length > 0 && (
             <motion.div
               key="step3"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.4 }}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-8"
             >
-              <Card className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg">
+              <div className="text-center mb-12">
+                <h2 className="text-4xl font-serif text-gray-900 mb-4">
+                  Your Quick Win Keywords
+                </h2>
+                <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                  Found {keywords.filter(k => k.is_quick_win).length} quick wins! Click any keyword to generate a content brief.
+                </p>
+              </div>
+
+              {/* Keywords Table View */}
+              <Card className="bg-white/70 backdrop-blur-xl border-[#D4AF37]/20 shadow-xl overflow-hidden">
                 <CardHeader>
-                  <CardTitle className="font-serif flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-[#D4AF37]" />
-                    Quick Wins Discovery
-                  </CardTitle>
-                  <p className="text-sm text-gray-500 mb-2">
-                    💡 <strong>Quick Wins</strong> are keywords with competition ≤50%, opportunity score ≥45, and volume ≥50 searches/month - easier to rank for and perfect for faster results.
-                  </p>
                   <div className="flex justify-between items-center">
-                    <p className="text-gray-600">
-                      Found <strong>{quickWins.length}</strong> quick wins out of {keywords.length} keywords
-                    </p>
-                    <div className="flex gap-2">
-                      <Button onClick={exportKeywords} variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-1" />
-                        Export CSV
-                      </Button>
-                      <Button onClick={resetFlow} variant="outline" size="sm">
-                        New Search
-                      </Button>
+                    <CardTitle className="text-xl">Keywords Found</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-[#D4AF37] text-white">
+                        {keywords.filter(k => k.is_quick_win).length} Quick Wins
+                      </Badge>
+                      <Badge variant="outline">
+                        {keywords.length} Total
+                      </Badge>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  {quickWins.length === 0 ? (
-                    <div className="text-center py-8 bg-orange-50 rounded-lg border border-orange-200">
-                      <Target className="mx-auto h-12 w-12 text-orange-400 mb-4" />
-                      <h3 className="text-lg font-medium text-orange-800 mb-2">No Quick Wins Found</h3>
-                      <p className="text-orange-700 mb-4">
-                        Try longer, more specific phrases like:<br/>
-                        "microphone for podcasting beginners" or "cheap wireless microphone"
-                      </p>
-                      <Button onClick={() => setCurrentStep(2)} variant="outline">
-                        Try Different Keywords
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {/* Quick Wins Section */}
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                        <h4 className="font-medium text-green-800 mb-3 flex items-center gap-2">
-                          🎯 Quick Wins ({quickWins.length})
-                        </h4>
-                        <div className="space-y-2">
-                          {quickWins.map((kw, i) => (
-                            <div key={i} className="flex items-center justify-between p-3 bg-white rounded-lg border border-green-200">
-                              <div>
-                                <span className="font-medium text-green-900">{kw.keyword}</span>
-                                <div className="text-xs text-green-700">
-                                  Vol: {kw.volume?.toLocaleString() || 'N/A'} • Comp: {Math.round((kw.competition || 0) * 100)}% • Opp: {kw.opportunity_score || 0}
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="text-left p-4 font-medium text-gray-600">Keyword</th>
+                          <th className="text-center p-4 font-medium text-gray-600">Volume</th>
+                          <th className="text-center p-4 font-medium text-gray-600">Competition</th>
+                          <th className="text-center p-4 font-medium text-gray-600">CPC</th>
+                          <th className="text-center p-4 font-medium text-gray-600">Score</th>
+                          <th className="text-center p-4 font-medium text-gray-600">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {keywords.map((keyword, index) => (
+                          <motion.tr
+                            key={index}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.05 }}
+                            className={`border-b hover:bg-gray-50/50 transition-colors ${keyword.is_quick_win ? "bg-[#D4AF37]/5" : ""}`}
+                          >
+                            <td className="p-4">
+                              <div className="flex flex-col gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-gray-900">
+                                    {keyword.keyword}
+                                  </span>
+                                  {keyword.is_quick_win && (
+                                    <Badge size="sm" className="bg-[#D4AF37] text-white text-xs">
+                                      <Lightbulb className="h-3 w-3 mr-1" />
+                                      Quick Win
+                                    </Badge>
+                                  )}
                                 </div>
+                                {keyword.intent_badge && (
+                                  <Badge variant="outline" className="text-xs w-fit">
+                                    {keyword.intent_badge}
+                                  </Badge>
+                                )}
                               </div>
+                            </td>
+                            <td className="p-4 text-center font-medium">
+                              {keyword.volume.toLocaleString()}
+                            </td>
+                            <td className="p-4 text-center">
+                              <div className={`font-medium ${keyword.competition < 0.3 ? "text-green-600" : keyword.competition < 0.6 ? "text-yellow-600" : "text-red-600"}`}>
+                                {(keyword.competition * 100).toFixed(0)}%
+                              </div>
+                            </td>
+                            <td className="p-4 text-center font-medium">
+                              ${keyword.cpc.toFixed(2)}
+                            </td>
+                            <td className="p-4 text-center">
+                              <div className={`font-bold text-lg ${keyword.opportunity_score >= 70 ? "text-green-600" : keyword.opportunity_score >= 50 ? "text-yellow-600" : "text-red-600"}`}>
+                                {keyword.opportunity_score}
+                              </div>
+                            </td>
+                            <td className="p-4 text-center">
                               <Button
-                                onClick={() => selectKeyword(kw.keyword)}
                                 size="sm"
-                                className="bg-green-600 hover:bg-green-700 text-white"
+                                onClick={() => generateBrief(keyword.keyword)}
+                                className="bg-[#D4AF37] hover:bg-[#B8941F] text-white"
                               >
-                                Create Brief
+                                <FileText className="h-4 w-4 mr-1" />
+                                Brief
                               </Button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Quick Win Success Tip */}
-                      <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <div className="flex items-start gap-2">
-                          <Sparkles className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="text-sm text-green-800 font-medium">Quick Win Success Formula:</p>
-                            <p className="text-xs text-green-700 mt-1">
-                              Look for keywords with <strong>competition ≤ 50%</strong> + <strong>opportunity score ≥ 45</strong> + <strong>volume ≥ 50</strong> + commercial modifiers (best, cheap, under $X, for beginners)
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Intent Legend */}
-                      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                        <h5 className="text-sm font-medium text-gray-700 mb-2">Search Intent Guide:</h5>
-                        <div className="flex flex-wrap gap-3 text-xs">
-                          <div className="flex items-center gap-1">
-                            <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-700">
-                              📚 Informational
-                            </span>
-                            <span className="text-gray-600">How-to, guides, tutorials</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span className="inline-flex items-center px-2 py-1 rounded-full bg-green-100 text-green-700">
-                              💰 Commercial
-                            </span>
-                            <span className="text-gray-600">Best, reviews, comparisons</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span className="inline-flex items-center px-2 py-1 rounded-full bg-purple-100 text-purple-700">
-                              🛒 Transactional
-                            </span>
-                            <span className="text-gray-600">Buy, price, deals</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span className="inline-flex items-center px-2 py-1 rounded-full bg-orange-100 text-orange-700">
-                              🧭 Navigational
-                            </span>
-                            <span className="text-gray-600">Login, website, brand</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Opportunity Score Guide */}
-                      <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-                        <p className="text-xs text-blue-800 font-medium mb-1">Scoring Guide:</p>
-                        <div className="flex flex-wrap gap-2 text-xs mb-2">
-                          <span className="px-2 py-1 bg-green-100 text-green-800 rounded">Opportunity 60-100: Excellent</span>
-                          <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded">40-59: Good</span>
-                          <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded">20-39: Moderate</span>
-                          <span className="px-2 py-1 bg-red-100 text-red-800 rounded">0-19: Difficult</span>
-                        </div>
-                        <div className="flex flex-wrap gap-2 text-xs">
-                          <span className="px-2 py-1 bg-green-100 text-green-800 rounded">Competition 0-30%: Easy</span>
-                          <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded">31-60%: Medium</span>
-                          <span className="px-2 py-1 bg-red-100 text-red-800 rounded">61-100%: Hard</span>
-                        </div>
-                      </div>
-
-                      {/* All Keywords Table */}
-                      <div>
-                        <h4 className="font-medium mb-3">All Keywords</h4>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="border-b border-gray-200 bg-gray-50">
-                                <th className="text-left py-2 px-3 font-medium">Keyword</th>
-                                <th className="text-center py-2 px-3 font-medium">Intent</th>
-                                <th className="text-right py-2 px-3 font-medium">Volume</th>
-                                <th className="text-right py-2 px-3 font-medium">Competition</th>
-                                <th className="text-right py-2 px-3 font-medium">Opportunity</th>
-                                <th className="text-center py-2 px-3 font-medium">Action</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {keywords.map((kw, i) => {
-                                const intent = detectSearchIntent(kw.keyword);
-                                return (
-                                  <tr key={i} className={`border-b border-gray-100 hover:bg-gray-50 ${kw.is_quick_win ? 'bg-green-50' : ''}`}>
-                                    <td className="py-3 px-3">
-                                      <span className="font-medium">{kw.keyword}</span>
-                                      {kw.is_quick_win && <span className="ml-2 text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">Quick Win</span>}
-                                    </td>
-                                    <td className="py-3 px-3 text-center">
-                                      <span 
-                                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${intent.color} ${intent.bgColor}`}
-                                        title={`${intent.type.charAt(0).toUpperCase() + intent.type.slice(1)} Intent`}
-                                      >
-                                        <span className="mr-1">{intent.icon}</span>
-                                        {intent.type.charAt(0).toUpperCase() + intent.type.slice(1)}
-                                      </span>
-                                    </td>
-                                    <td className="py-3 px-3 text-right">{kw.volume?.toLocaleString() || 'N/A'}</td>
-                                    <td className="py-3 px-3 text-right">
-                                      <span className={`${
-                                        (kw.competition || 0) <= 0.3 ? 'text-green-600' :
-                                        (kw.competition || 0) <= 0.6 ? 'text-yellow-600' : 'text-red-600'
-                                      }`}>
-                                        {Math.round((kw.competition || 0) * 100)}%
-                                      </span>
-                                    </td>
-                                    <td className="py-3 px-3 text-right">
-                                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                        (kw.opportunity_score || 0) >= 70 ? 'bg-green-100 text-green-800' :
-                                        (kw.opportunity_score || 0) >= 40 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
-                                      }`}>
-                                        {kw.opportunity_score || 0}
-                                      </span>
-                                    </td>
-                                    <td className="py-3 px-3 text-center">
-                                      <Button
-                                        onClick={() => selectKeyword(kw.keyword)}
-                                        size="sm"
-                                        variant="outline"
-                                      >
-                                        Select
-                                      </Button>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                            </td>
+                          </motion.tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </CardContent>
               </Card>
+
+              <div className="flex justify-between">
+                <Button
+                  variant="outline"
+                  onClick={() => goToStep(2)}
+                  className="px-6 py-3 rounded-xl"
+                >
+                  Back to Input
+                </Button>
+
+                <Button
+                  onClick={exportToCSV}
+                  variant="outline"
+                  className="px-6 py-3 rounded-xl"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Export CSV
+                </Button>
+              </div>
             </motion.div>
           )}
 
           {/* Step 4: Brief Generation */}
-          {currentStep === 4 && selectedKeyword && (
+          {currentStep === 4 && (
             <motion.div
               key="step4"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.4 }}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-8"
             >
-              <Card className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg">
-                <CardHeader>
-                  <CardTitle className="font-serif flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-[#D4AF37]" />
-                    Content Brief
-                  </CardTitle>
-                  <p className="text-gray-600">Generate a comprehensive content strategy for your keyword</p>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Keyword Editor */}
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Target Keyword</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        value={editingKeyword}
-                        onChange={(e) => setEditingKeyword(e.target.value)}
-                        placeholder="Enter or edit your target keyword"
-                        className="flex-1"
-                        onKeyPress={(e) => e.key === 'Enter' && updateKeywordAndRegenerateBrief()}
-                      />
-                      {editingKeyword !== selectedKeyword && editingKeyword.trim() && (
-                        <Button
-                          onClick={updateKeywordAndRegenerateBrief}
-                          size="sm"
-                          className="bg-[#D4AF37] text-black hover:bg-[#B8941F]"
-                        >
-                          Update
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+              <div className="text-center mb-12">
+                <h2 className="text-4xl font-serif text-gray-900 mb-4">
+                  Content Brief Generated
+                </h2>
+                <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                  Your AI-powered content strategy for "{selectedKeyword}".
+                </p>
+                <div className="mt-6 flex items-center justify-center gap-3">
+                  <span className="text-sm text-gray-500">Want to try a different keyword?</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => goToStep(3)}
+                    className="text-sm"
+                  >
+                    <Search className="h-3 w-3 mr-1" />
+                    Change Keyword
+                  </Button>
+                </div>
+              </div>
 
-                  {!brief ? (
-                    <div className="text-center py-12">
-                      <FileText className="mx-auto h-16 w-16 text-gray-300 mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">Ready to Create Your Brief</h3>
-                      <p className="text-gray-600 mb-6">
-                        We'll generate a detailed content strategy for <strong>"{editingKeyword || selectedKeyword}"</strong>
-                      </p>
+              {isLoadingBrief ? (
+                <Card className="bg-white/70 backdrop-blur-xl border-[#D4AF37]/20 shadow-xl">
+                  <CardContent className="p-12 text-center">
+                    <Loader2 className="h-12 w-12 animate-spin text-[#D4AF37] mx-auto mb-4" />
+                    <p className="text-lg text-gray-600">Generating your content brief...</p>
+                  </CardContent>
+                </Card>
+              ) : brief ? (
+                <Card className="bg-white/70 backdrop-blur-xl border-[#D4AF37]/20 shadow-xl">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2 text-2xl">
+                        <FileText className="h-6 w-6 text-[#D4AF37]" />
+                        Content Brief: {brief.topic}
+                      </CardTitle>
                       <Button
-                        onClick={generateBrief}
-                        disabled={loading.brief || !editingKeyword.trim()}
-                        className="bg-[#D4AF37] text-black hover:bg-[#B8941F] px-8 py-3"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          if (brief?.summary) {
+                            navigator.clipboard.writeText(brief.summary);
+                            setCopiedBrief(true);
+                            setTimeout(() => setCopiedBrief(false), 2000);
+                          }
+                        }}
+                        className="flex items-center gap-2"
                       >
-                        {loading.brief ? (
+                        {copiedBrief ? (
                           <>
-                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                            Generating Brief...
+                            <Check className="h-4 w-4 text-green-600" />
+                            <span className="text-green-600">Copied!</span>
                           </>
                         ) : (
                           <>
-                            <Sparkles className="mr-2 h-5 w-5" />
-                            Generate Content Brief
+                            <Copy className="h-4 w-4" />
+                            Copy All
                           </>
                         )}
                       </Button>
                     </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {/* Brief Display */}
-                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
-                        <div className="flex items-center justify-between mb-4">
-                          <h4 className="font-serif text-lg font-medium text-blue-900">Content Brief for "{selectedKeyword}"</h4>
-                          <div className="flex gap-2">
-                            <Button
-                              onClick={() => setBrief(null)}
-                              variant="outline"
-                              size="sm"
-                            >
-                              <Edit3 className="h-4 w-4 mr-1" />
-                              Edit Keyword
-                            </Button>
-                          </div>
-                        </div>
-                        
-                        {/* Brief Content Display */}
-                        <div className="bg-white rounded-lg p-4 border border-blue-100 max-h-96 overflow-y-auto">
-                          <div className="prose prose-sm max-w-none">
-                            <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
-                              {brief.summary || 'Brief content generated successfully!'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Export Options */}
-                      <div className="flex flex-wrap gap-3">
-                        <Button
-                          onClick={exportToWord}
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          <Download className="mr-2 h-4 w-4" />
-                          Export to Word
-                        </Button>
-                        <Button
-                          onClick={exportToGoogleDocs}
-                          className="bg-green-600 hover:bg-green-700 text-white"
-                        >
-                          <ExternalLink className="mr-2 h-4 w-4" />
-                          Open in Google Docs
-                        </Button>
-                        <Button onClick={() => setCurrentStep(5)} variant="outline">
-                          Continue to Export Options
-                        </Button>
-                        <Button onClick={resetFlow} variant="ghost">
-                          Start New Search
-                        </Button>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="prose max-w-none">
+                      <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
+                        {brief.summary}
                       </div>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              ) : null}
+
+              <div className="flex justify-between">
+                <Button
+                  variant="outline"
+                  onClick={() => goToStep(3)}
+                  className="px-6 py-3 rounded-xl"
+                >
+                  Back to Keywords
+                </Button>
+
+                <div className="flex gap-4">
+                  <Button
+                    onClick={exportBrief}
+                    disabled={!brief}
+                    variant="outline"
+                    className="px-6 py-3 rounded-xl"
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Export Brief
+                  </Button>
+
+                  <Button
+                    onClick={() => setCurrentStep(5)}
+                    disabled={!brief}
+                    className="bg-[#D4AF37] hover:bg-[#B8941F] text-white px-6 py-3 rounded-xl"
+                  >
+                    Complete
+                    <ChevronRight className="ml-2 h-5 w-5" />
+                  </Button>
+                </div>
+              </div>
             </motion.div>
           )}
 
-          {/* Step 5: Export */}
-          {currentStep === 5 && brief && (
+          {/* Step 5: Export & Complete */}
+          {currentStep === 5 && (
             <motion.div
               key="step5"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.4 }}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-8"
             >
-              <Card className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg">
+              <div className="text-center mb-12">
+                <div className="mb-6">
+                  <CheckCircle className="h-20 w-20 text-[#D4AF37] mx-auto mb-4" />
+                </div>
+                <h2 className="text-4xl font-serif text-gray-900 mb-4">
+                  All Done! 🎉
+                </h2>
+                <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                  Your keyword research and content brief are ready. Export your results and start creating content!
+                </p>
+              </div>
+
+              <Card className="bg-white/70 backdrop-blur-xl border-[#D4AF37]/20 shadow-xl">
                 <CardHeader>
-                  <CardTitle className="font-serif flex items-center gap-2">
-                    <Download className="h-5 w-5 text-[#D4AF37]" />
-                    Export Your Results
-                  </CardTitle>
-                  <p className="text-gray-600">Download your keywords and content brief</p>
+                  <CardTitle className="text-2xl text-center">Export Your Results</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="p-4 border rounded-lg bg-green-50 border-green-200">
-                      <h4 className="font-medium mb-2">Keywords CSV</h4>
-                      <p className="text-sm text-gray-600 mb-3">
-                        All {keywords.length} keywords with volumes, competition, and quick-win flags
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="text-center p-6 bg-gray-50 rounded-xl">
+                      <h3 className="font-medium mb-2">Keywords Found</h3>
+                      <p className="text-3xl font-bold text-[#D4AF37] mb-4">
+                        {keywords.length}
                       </p>
-                      <Button onClick={exportKeywords} className="w-full">
+                      <Button
+                        onClick={exportToCSV}
+                        className="bg-[#D4AF37] hover:bg-[#B8941F] text-white w-full"
+                      >
                         <Download className="mr-2 h-4 w-4" />
-                        Download Keywords
+                        Export CSV
                       </Button>
                     </div>
-                    
-                    <div className="p-4 border rounded-lg bg-blue-50 border-blue-200">
-                      <h4 className="font-medium mb-2">Content Brief</h4>
-                      <p className="text-sm text-gray-600 mb-3">
-                        Professional brief for "{selectedKeyword}" as Word document
+
+                    <div className="text-center p-6 bg-gray-50 rounded-xl">
+                      <h3 className="font-medium mb-2">Content Brief</h3>
+                      <p className="text-3xl font-bold text-[#D4AF37] mb-4">
+                        {selectedKeyword ? "1" : "0"}
                       </p>
-                      <Button onClick={exportToWord} className="w-full">
+                      <Button
+                        onClick={exportBrief}
+                        disabled={!brief}
+                        className="bg-[#D4AF37] hover:bg-[#B8941F] text-white w-full"
+                      >
                         <Download className="mr-2 h-4 w-4" />
-                        Download Brief
+                        Export Brief
                       </Button>
                     </div>
                   </div>
 
-                  <div className="text-center pt-6 border-t border-gray-200">
-                    <h3 className="font-medium text-gray-900 mb-2">🎉 Great job!</h3>
-                    <p className="text-gray-600 mb-4">
-                      You've successfully found quick-win keywords and generated a content brief.
-                    </p>
-                    <Button onClick={resetFlow} className="bg-[#D4AF37] text-black hover:bg-[#B8941F]">
-                      Find More Quick Wins
+                  <div className="text-center pt-6 border-t">
+                    <Button
+                      onClick={() => {
+                        setCurrentStep(1);
+                        setSeedKeyword("");
+                        setKeywords([]);
+                        setBrief(null);
+                        setSelectedKeyword("");
+                        setIsExportReady(false);
+                      }}
+                      variant="outline"
+                      className="px-8 py-3 rounded-xl"
+                    >
+                      Start New Research
                     </Button>
                   </div>
                 </CardContent>
@@ -963,35 +875,13 @@ export default function QuickWinsFinder() {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Error Display */}
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg"
-          >
-            <p className="text-sm text-red-700">{error}</p>
-            <Button
-              onClick={() => setError(null)}
-              variant="ghost"
-              size="sm"
-              className="mt-2 text-red-600 hover:text-red-700"
-            >
-              Dismiss
-            </Button>
-          </motion.div>
-        )}
       </div>
 
       {/* Footer */}
-      <div className="bg-white/50 backdrop-blur-xl border-t border-black/5 mt-12">
+      <div className="bg-white/50 backdrop-blur-xl border-t border-[#D4AF37]/20 mt-20">
         <div className="max-w-4xl mx-auto px-6 py-8 text-center">
-          <p className="text-sm text-gray-600">
-            Free version • 10 keywords max • GPT-3.5 Turbo
-          </p>
-          <p className="text-xs text-gray-500 mt-2">
-            Want more keywords and better AI? <strong>Pro version coming soon!</strong>
+          <p className="text-gray-600">
+            Quick Wins Finder • Find low-competition keywords and create content that ranks
           </p>
         </div>
       </div>

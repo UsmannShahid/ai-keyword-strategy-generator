@@ -19,23 +19,29 @@ A simplified, single-page keyword research tool that helps you find low-competit
 ```bash
 cd api
 pip install -r requirements.txt
-python -m uvicorn main:app --reload --port 8002
+python simple_server.py
+# Runs on http://localhost:8004
 ```
 
 ### 2. Start Frontend
 ```bash
 cd frontend
 npm install
-npm run dev
-# Runs on http://localhost:3005
+npm run dev -- -p 3007
+# Runs on http://localhost:3007
 ```
 
 ### 3. Test the Flow
-1. Go to http://localhost:3005
+1. Go to http://localhost:3007
 2. Fill in business setup (saved automatically)
 3. Enter seed keyword like "microphone"
 4. Get quick wins and generate brief
 5. Export results
+
+### 🔧 Current Server Configuration
+- **API**: http://localhost:8004 (simple_server.py)
+- **Frontend**: http://localhost:3007
+- **API Docs**: http://localhost:8004/docs
 
 ## 📁 Project Structure
 
@@ -73,8 +79,33 @@ free-version/
 - **Design**: shadcn/ui components with luxury styling
 - **Animations**: Framer Motion for smooth transitions
 
+## ✅ Recent Improvements (January 2025)
+
+### Navigation & UX Enhancements
+- ✅ **Contextual Navigation**: Replaced complex step indicator with clean progress bar and current step display
+- ✅ **Enhanced Country Selection**: Expanded from 26 to 75+ countries covering all major regions
+- ✅ **Change Keyword Option**: Added ability to switch keywords during brief generation
+- ✅ **Copy All Functionality**: One-click copying of entire content briefs with visual feedback
+
+### Content Quality Improvements
+- ✅ **Enhanced Content Briefs**: Comprehensive 6-section AI-powered content strategies
+- ✅ **Intent Badges**: Visual indicators for keyword search intent and opportunities
+- ✅ **Quick Win Highlighting**: Clear identification of low-competition opportunities in table view
+
+### Technical Fixes
+- ✅ **Fixed JSX Syntax Issues**: Resolved parsing errors in keyword mapping table
+- ✅ **API Validation**: Proper request/response handling for brief generation endpoint
+- ✅ **Error Handling**: Graceful fallbacks when OpenAI API is unavailable
+
+## 🔧 Environment Setup
+
+Add to `api/.env`:
+```bash
+OPENAI_API_KEY=your_openai_api_key_here
+```
+
 ## 🎯 Ready to Launch
 
-This free version is **production ready** and follows the original workflow perfectly. It's 90% simpler than the complex version while delivering the core value proposition.
+This free version is **production ready** with all recent enhancements. It delivers the core value proposition with improved UX and enhanced content generation capabilities.
 
-**Ready to launch today! 🚀**
+**Fully functional and ready to use! 🚀**
