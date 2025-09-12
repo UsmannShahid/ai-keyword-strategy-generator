@@ -1,0 +1,238 @@
+Great question! Let me suggest some psychological UX improvements that can significantly enhance user experience without adding
+  complexity. These are based on latest behavioral psychology and UX research:
+
+  🧠 Psychological UX Improvements
+
+  1. Progress Psychology & Momentum
+
+  // Current: Linear progress bar
+  // Enhanced: Micro-celebrations + momentum indicators
+
+  // Add celebration animations when steps complete
+  {currentStep > prevStep && (
+    <motion.div className="fixed top-4 right-4 z-50">
+      <div className="bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg">
+        ✨ Step {currentStep-1} Complete!
+      </div>
+    </motion.div>
+  )}
+
+  // Show "time saved" psychology
+  <div className="text-xs text-gray-500">
+    ⚡ You're 2 minutes ahead of typical research time
+  </div>
+
+  2. Social Proof & Authority
+
+  // Add subtle social proof without complexity
+  <div className="text-xs text-gray-500 mb-2">
+    💡 Based on analysis of 10,000+ successful keywords
+  </div>
+
+  // Quick win badges with authority
+  <Badge className="bg-green-100 text-green-800">
+    <TrendingUp className="h-3 w-3 mr-1" />
+    85% Success Rate
+  </Badge>
+
+  3. Cognitive Load Reduction
+
+  // Progressive disclosure for complex information
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Instead of showing all metrics at once:
+  <div className="space-y-2">
+    <div className="font-medium">{keyword.keyword}</div>
+    <div className="flex items-center gap-2">
+      <Badge variant={keyword.is_quick_win ? "default" : "outline"}>
+        {keyword.is_quick_win ? "Quick Win" : "Standard"}
+      </Badge>
+      <button
+        onClick={() => setShowAdvanced(!showAdvanced)}
+        className="text-xs text-blue-600 hover:underline"
+      >
+        {showAdvanced ? "Hide" : "Show"} details
+      </button>
+    </div>
+    {showAdvanced && (
+      <div className="text-xs space-y-1">
+        <div>Volume: {keyword.volume}</div>
+        <div>Competition: {keyword.competition}</div>
+      </div>
+    )}
+  </div>
+
+  4. Loss Aversion & Urgency
+
+  // Subtle urgency without being pushy
+  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+    <div className="flex items-center gap-2 text-amber-800">
+      <Clock className="h-4 w-4" />
+      <span className="text-sm">
+        {keywords.filter(k => k.is_quick_win).length} quick wins found -
+        these opportunities won't last forever
+      </span>
+    </div>
+  </div>
+
+  5. Endowment Effect (Ownership)
+
+  // Make users feel ownership of their research
+  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+    <h3 className="font-medium text-blue-900">Your Keyword Portfolio</h3>
+    <p className="text-sm text-blue-700">
+      You've discovered {keywords.length} keywords worth an estimated
+      ${(keywords.reduce((sum, k) => sum + k.cpc * k.volume * 0.02, 0)).toFixed(0)}
+      in potential monthly value
+    </p>
+  </div>
+
+  6. Anticipation & Curiosity
+
+  // Build anticipation during loading
+  const loadingMessages = [
+    "🔍 Analyzing search patterns...",
+    "🎯 Identifying quick wins...",
+    "📊 Calculating opportunity scores...",
+    "✨ Almost ready..."
+  ];
+
+  // Show different message every 1.5 seconds
+  {isLoadingKeywords && (
+    <div className="text-center py-8">
+      <Loader2 className="h-8 w-8 animate-spin text-[#D4AF37] mx-auto mb-4" />
+      <p className="text-gray-600">{currentLoadingMessage}</p>
+      <div className="w-32 h-1 bg-gray-200 rounded-full mx-auto mt-2">
+        <div className="h-full bg-[#D4AF37] rounded-full transition-all duration-1000"
+             style={{width: `${loadingProgress}%`}} />
+      </div>
+    </div>
+  )}
+
+  7. Peak-End Rule (Memorable Moments)
+
+  // Create a memorable "success moment" at the end
+  {currentStep === 5 && (
+    <motion.div
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      className="text-center py-12"
+    >
+      <div className="mb-6">
+        <div className="w-20 h-20 bg-gradient-to-r from-[#D4AF37] to-yellow-400
+                        rounded-full flex items-center justify-center mx-auto mb-4">
+          <Trophy className="h-10 w-10 text-white" />
+        </div>
+        <h2 className="text-3xl font-serif text-gray-900 mb-2">
+          Research Complete! 🎉
+        </h2>
+        <p className="text-lg text-gray-600">
+          You've just saved 4+ hours of manual research
+        </p>
+      </div>
+
+      {/* Summary stats for satisfaction */}
+      <div className="grid grid-cols-3 gap-4 max-w-md mx-auto">
+        <div className="bg-white p-4 rounded-lg shadow">
+          <div className="text-2xl font-bold text-[#D4AF37]">
+            {keywords.filter(k => k.is_quick_win).length}
+          </div>
+          <div className="text-sm text-gray-600">Quick Wins</div>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow">
+          <div className="text-2xl font-bold text-[#D4AF37]">
+            {Math.round(keywords.reduce((sum, k) => sum + k.opportunity_score, 0) / keywords.length)}
+          </div>
+          <div className="text-sm text-gray-600">Avg Score</div>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow">
+          <div className="text-2xl font-bold text-[#D4AF37]">1</div>
+          <div className="text-sm text-gray-600">Content Brief</div>
+        </div>
+      </div>
+    </motion.div>
+  )}
+
+  8. Choice Architecture
+
+  // Guide users toward better choices
+  <div className="space-y-3">
+    {keywords.map((keyword, index) => (
+      <div key={index} className={`
+        p-4 rounded-lg border-2 transition-all cursor-pointer
+        ${keyword.is_quick_win
+          ? "border-green-300 bg-green-50 shadow-md"
+          : "border-gray-200 bg-white hover:border-gray-300"
+        }
+      `}>
+        <div className="flex justify-between items-center">
+          <div>
+            <span className="font-medium">{keyword.keyword}</span>
+            {keyword.is_quick_win && (
+              <span className="ml-2 text-xs bg-green-600 text-white px-2 py-1 rounded">
+                RECOMMENDED
+              </span>
+            )}
+          </div>
+          <Button
+            size="sm"
+            variant={keyword.is_quick_win ? "default" : "outline"}
+            onClick={() => generateBrief(keyword.keyword)}
+          >
+            {keyword.is_quick_win ? "Start Here" : "Generate Brief"}
+          </Button>
+        </div>
+      </div>
+    ))}
+  </div>
+
+  9. Reciprocity & Gratitude
+
+  // Show value provided before asking for action
+  <div className="bg-gray-50 p-4 rounded-lg mb-6">
+    <div className="text-sm text-gray-600 mb-2">
+      💝 What you just received for free:
+    </div>
+    <ul className="text-sm space-y-1">
+      <li>✓ 10 researched keywords (normally $50 value)</li>
+      <li>✓ Competition analysis (normally $30 value)</li>
+      <li>✓ Content strategy brief (normally $100 value)</li>
+    </ul>
+    <div className="text-xs text-gray-500 mt-2">
+      Total value: $180 • Time saved: 4+ hours
+    </div>
+  </div>
+
+  10. Micro-Interactions & Delight
+
+  // Add subtle hover states and micro-animations
+  <motion.div
+    whileHover={{ scale: 1.02 }}
+    whileTap={{ scale: 0.98 }}
+    className="cursor-pointer"
+  >
+    {/* Content */}
+  </motion.div>
+
+  // Satisfying copy feedback
+  {copiedBrief && (
+    <motion.div
+      initial={{ scale: 0 }}
+      animate={{ scale: 1 }}
+      exit={{ scale: 0 }}
+      className="text-green-600 text-sm"
+    >
+      ✓ Copied! Ready to create amazing content
+    </motion.div>
+  )}
+
+  🎯 Implementation Priority:
+
+  1. High Impact, Low Effort: Progress celebrations, social proof badges
+  2. Medium Impact: Choice architecture, loading anticipation
+  3. High Delight: Peak-end moments, micro-interactions
+
+  These psychological improvements will make users feel more confident, engaged, and satisfied without adding any functional complexity.        
+  They tap into fundamental human psychology around progress, social proof, loss aversion, and cognitive ease.
+
+  Would you like me to implement any of these specific improvements?

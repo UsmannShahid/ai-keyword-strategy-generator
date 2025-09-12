@@ -202,10 +202,10 @@ def get_difficulty_weights(mode: DifficultyMode) -> Dict[str, float]:
     """Get component weights based on difficulty mode"""
     if mode == "easy":
         return {
-            "volume": 0.30,      # 30%
-            "competition": 0.40, # 40% - Focus on low competition
-            "cpc": 0.15,         # 15%
-            "longtail": 0.10,    # 10%
+            "volume": 0.25,      # 25%
+            "competition": 0.45, # 45% - Strong focus on low competition
+            "cpc": 0.10,         # 10%
+            "longtail": 0.15,    # 15%
             "commercial": 0.05   # 5%
         }
     elif mode == "medium":
@@ -404,7 +404,8 @@ def multifactor_score(
     is_quick_win = (
         competition_filter_passed and 
         final_score >= quick_win_thresholds[difficulty_mode] and
-        volume >= 50  # Lowered minimum volume requirement from 100 to 50
+        volume >= 50 and
+        len((keyword or "").split()) >= 3  # Require long-tail for quick wins
     )
     
     return {
@@ -456,9 +457,48 @@ class KeywordRequest(BaseModel):
     use_serp_analysis: bool = True
     difficulty_mode: DifficultyMode = "medium"  # New: Easy/Medium/Hard modes
 
+class TargetAudience(BaseModel):
+    primary: str
+    secondary: str
+    demographics: List[str]
+
+class ContentStrategy(BaseModel):
+    primary_goal: str
+    content_type: str
+    tone: str
+    word_count: str
+
+class ContentOutline(BaseModel):
+    introduction: str
+    main_sections: List[str]
+    conclusion: str
+
+class SEOOptimization(BaseModel):
+    primary_keyword: str
+    secondary_keywords: List[str]
+    meta_title: str
+    meta_description: str
+
+class CompetitiveAnalysis(BaseModel):
+    top_competitors: List[str]
+    content_gaps: List[str]
+    differentiation_opportunities: List[str]
+
+class ActionableInsights(BaseModel):
+    quick_wins: List[str]
+    long_term_strategies: List[str]
+    content_calendar_suggestions: List[str]
+
 class Brief(BaseModel):
     topic: str
-    summary: str
+    summary: str  # Keep for backward compatibility
+    # Enhanced structured fields
+    target_audience: Optional[TargetAudience] = None
+    content_strategy: Optional[ContentStrategy] = None
+    content_outline: Optional[ContentOutline] = None
+    seo_optimization: Optional[SEOOptimization] = None
+    competitive_analysis: Optional[CompetitiveAnalysis] = None
+    actionable_insights: Optional[ActionableInsights] = None
 
 class BriefRequest(BaseModel):
     keyword: str
@@ -715,7 +755,7 @@ Format as JSON array:
         fallback_keywords.sort(key=lambda k: (not k.is_quick_win, -k.opportunity_score))
         return fallback_keywords
 
-async def generate_brief_with_serp(keyword: str, country: str = "US", use_serp_analysis: bool = True) -> str:
+async def generate_brief_with_serp(keyword: str, country: str = "US", use_serp_analysis: bool = True) -> Brief:
     """Generate content brief enhanced with SERP analysis"""
     
     # Check cache first
@@ -724,8 +764,14 @@ async def generate_brief_with_serp(keyword: str, country: str = "US", use_serp_a
     
     if cached_brief:
         logger.info(f"🚀 Redis cache hit for SERP brief: {keyword}")
-        return cached_brief
-    
+        try:
+            # Try to parse cached structured data
+            cached_data = json.loads(cached_brief)
+            return Brief(**cached_data)
+        except:
+            # If cache is old text format, regenerate
+            pass
+
     try:
         serp_context = ""
         
@@ -754,48 +800,109 @@ Use this SERP data to create content that can outrank competitors.
             except Exception as e:
                 logger.error(f"SERP analysis failed for brief {keyword}: {e}")
         
-        # Generate enhanced brief
+        # Generate enhanced brief with structured JSON output
         prompt = f"""
 Create a comprehensive content brief for the keyword "{keyword}".
 
 {serp_context}
 
-Include:
-1. Target audience analysis
-2. Search intent (informational, commercial, navigational)
-3. Content angle recommendations based on competitor analysis
-4. Suggested H2/H3 outline (5-7 sections)
-5. Key entities and terms to include
-6. FAQ suggestions (3-5 questions)
-7. SEO optimization checklist
-8. Content differentiation opportunities
+IMPORTANT: Return ONLY a valid JSON object with no additional text or explanation.
 
-Make it actionable and specific. Write in a clear, professional tone.
+{{
+  "target_audience": {{
+    "primary": "Main target audience (e.g., 'Small business owners looking to improve their online presence')",
+    "secondary": "Secondary audience (e.g., 'Marketing managers at mid-sized companies')",
+    "demographics": ["Age group", "Professional level", "Industry/Interest"]
+  }},
+  "content_strategy": {{
+    "primary_goal": "Main objective (e.g., 'Educate readers on best practices while positioning our solution')",
+    "content_type": "Content format (e.g., 'comprehensive guide', 'comparison article', 'how-to tutorial')",
+    "tone": "Writing style (e.g., 'professional yet approachable', 'authoritative expert', 'friendly conversational')",
+    "word_count": "Target length (e.g., '2000-2500 words', '1500-2000 words')"
+  }},
+  "content_outline": {{
+    "introduction": "What to cover in the opening (e.g., 'Hook with statistics, define the problem, preview solutions')",
+    "main_sections": ["Specific H2 section 1", "Specific H2 section 2", "Specific H2 section 3", "Specific H2 section 4", "Specific H2 section 5"],
+    "conclusion": "What to emphasize in closing (e.g., 'Summarize key takeaways, include call-to-action for next steps')"
+  }},
+  "seo_optimization": {{
+    "primary_keyword": "{keyword}",
+    "secondary_keywords": ["long-tail variation 1", "related term 2", "semantic keyword 3"],
+    "meta_title": "SEO title 55-60 characters with primary keyword",
+    "meta_description": "Compelling 150-160 character description that includes primary keyword and value proposition"
+  }},
+  "competitive_analysis": {{
+    "top_competitors": ["domain1.com", "domain2.com", "domain3.com"],
+    "content_gaps": ["Missing angle 1", "Underserved subtopic 2", "Opportunity area 3"],
+    "differentiation_opportunities": ["Unique approach 1", "Better coverage of topic 2", "Stronger call-to-action 3"]
+  }},
+  "actionable_insights": {{
+    "quick_wins": ["Immediate optimization 1", "Easy improvement 2", "Quick implementation 3"],
+    "long_term_strategies": ["Strategic approach 1", "Advanced tactic 2", "Growth opportunity 3"],
+    "content_calendar_suggestions": ["Follow-up article topic 1", "Related content idea 2", "Series continuation 3"]
+  }}
+}}
+
+Make the content specific to "{keyword}" and actionable for content creators.
 """
 
         response = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are an expert content strategist and SEO specialist with access to SERP data."},
+                {"role": "system", "content": "You are an expert content strategist and SEO specialist. Always return valid JSON structure as requested."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
-            max_tokens=1200
+            max_tokens=1500
         )
         
-        brief_content = response.choices[0].message.content.strip()
+        ai_response = response.choices[0].message.content.strip()
         
-        # Cache the brief (4 hours for SERP-enhanced briefs)
-        await set_cache(cache_key, brief_content, 14400)
-        logger.info(f"✅ Cached SERP-enhanced brief: {keyword}")
-        
-        return brief_content
+        # Parse the JSON response
+        try:
+            # Extract JSON from response (sometimes AI adds markdown formatting)
+            if ai_response.startswith('```json'):
+                ai_response = ai_response.replace('```json', '').replace('```', '')
+            elif ai_response.startswith('```'):
+                ai_response = ai_response.replace('```', '')
+            
+            structured_data = json.loads(ai_response.strip())
+            
+            # Create brief with structured data
+            brief = Brief(
+                topic=keyword,
+                summary=f"Comprehensive content brief for '{keyword}' with structured analysis",
+                target_audience=TargetAudience(**structured_data.get("target_audience", {})) if structured_data.get("target_audience") else None,
+                content_strategy=ContentStrategy(**structured_data.get("content_strategy", {})) if structured_data.get("content_strategy") else None,
+                content_outline=ContentOutline(**structured_data.get("content_outline", {})) if structured_data.get("content_outline") else None,
+                seo_optimization=SEOOptimization(**structured_data.get("seo_optimization", {})) if structured_data.get("seo_optimization") else None,
+                competitive_analysis=CompetitiveAnalysis(**structured_data.get("competitive_analysis", {})) if structured_data.get("competitive_analysis") else None,
+                actionable_insights=ActionableInsights(**structured_data.get("actionable_insights", {})) if structured_data.get("actionable_insights") else None
+            )
+            
+            # Cache the structured brief (4 hours for SERP-enhanced briefs)
+            cache_data = brief.model_dump_json()
+            await set_cache(cache_key, cache_data, 14400)
+            logger.info(f"✅ Cached structured brief: {keyword}")
+            
+            return brief
+            
+        except json.JSONDecodeError as je:
+            logger.error(f"Failed to parse JSON response for {keyword}: {je}")
+            # Fallback to text-based brief
+            brief = Brief(
+                topic=keyword,
+                summary=ai_response[:1000]  # Truncate if too long
+            )
+            return brief
         
     except Exception as e:
         logger.error(f"Error generating brief: {e}")
-        return f"# Content Brief: {keyword}\n\n## Target Audience\nPeople searching for \"{keyword}\" are looking for practical information.\n\n## Search Intent\nInformational - users want to learn about this topic.\n\n## Content Angle\nFocus on actionable advice with clear benefits."
-
-# Routes
+        # Return minimal fallback brief
+        return Brief(
+            topic=keyword,
+            summary=f"## Content Brief: {keyword}\n\n### Target Audience\nPeople searching for \"{keyword}\" are looking for practical information.\n\n### Search Intent\nInformational - users want to learn about this topic.\n\n### Content Angle\nFocus on actionable advice with clear benefits."
+        )# Routes
 @app.get("/")
 async def root():
     return {"message": "Quick Wins Finder API (SERP Enhanced - Simple)", "status": "running"}
@@ -866,15 +973,10 @@ async def generate_content_brief(request: Request, brief_request: BriefRequest):
         raise HTTPException(status_code=400, detail="Keyword is required")
     
     try:
-        brief_content = await generate_brief_with_serp(
+        brief = await generate_brief_with_serp(
             brief_request.keyword,
             country="US",
             use_serp_analysis=brief_request.use_serp_analysis
-        )
-        
-        brief = Brief(
-            topic=brief_request.keyword,
-            summary=brief_content
         )
         
         return {
@@ -889,4 +991,4 @@ async def generate_content_brief(request: Request, brief_request: BriefRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8003)
+    uvicorn.run(app, host="0.0.0.0", port=8002)

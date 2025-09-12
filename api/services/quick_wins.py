@@ -1,6 +1,7 @@
 # api/services/quick_wins.py
 import pandas as pd
 from typing import List, Dict, Tuple
+from api.core.scoring import multifactor_score
 
 # Define progressive tiers for what constitutes a "Quick Win"
 # Tier 1: Ideal (very low competition, good volume)
@@ -45,10 +46,21 @@ def compute_quick_wins_always(
         print(f"DEBUG: Trying Tier '{tier_name}'. Found {len(candidates)} candidates.")
 
         if not candidates.empty:
-            # If we found candidates, calculate score and return the best ones
-            # Score = (Volume / Competition) - higher is better. Add 0.01 to avoid division by zero.
-            candidates["opportunity_score"] = candidates["volume"] / (candidates["competition"] + 0.01)
-            
+            # If we found candidates, calculate unified 0–100 score and return the best ones
+            def _score_row(row: pd.Series) -> Tuple[float, bool]:
+                res = multifactor_score(
+                    keyword=str(row.get("keyword", "")),
+                    volume=float(row.get("volume") or 0.0),
+                    competition=float(row.get("competition") or 0.0),
+                    cpc=float(row.get("cpc") or 0.0),
+                    difficulty_mode="easy",
+                )
+                return float(res["score"]), bool(res["is_quick_win"])
+
+            scored = candidates.apply(lambda r: _score_row(r), axis=1, result_type="expand")
+            scored.columns = ["opportunity_score", "is_quick_win"]
+            candidates = candidates.join(scored)
+
             # Sort by the highest opportunity score
             top_wins = candidates.sort_values(by="opportunity_score", ascending=False).head(want)
             

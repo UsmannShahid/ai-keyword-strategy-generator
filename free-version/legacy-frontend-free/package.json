@@ -1,0 +1,10 @@
+{
+  "name": "frontend-free-wrapper",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix ../../free-version/frontend run dev",
+    "build": "npm --prefix ../../free-version/frontend run build",
+    "start": "npm --prefix ../../free-version/frontend run start"
+  }
+}
+

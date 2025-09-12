@@ -51,8 +51,6 @@ def generate_strategy(payload: StrategyRequest):
             event_type=event_type,
             endpoint=endpoint,
             keyword=payload.keyword,
-            channel=None,
-            tokens_est=None,
             latency_ms=t.elapsed_ms,
             success=True,
         )

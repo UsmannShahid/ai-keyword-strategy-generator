@@ -5,6 +5,7 @@ import json
 from typing import List, Dict, Optional
 from api.core.config import get_settings
 from api.core.gpt import _get_client  # reuse your OpenAI client
+from api.core.scoring import multifactor_score
 
 GKP_PATH = Path("data/gkp_keywords.csv")
 
@@ -201,16 +202,15 @@ def identify_quick_wins(keywords: List[Dict], max_results: int = 5) -> List[str]
 
 
 def compute_opportunity_score(keyword_text: str, volume: Optional[int], competition: Optional[float]) -> float:
-    """Compute a consistent opportunity score used across API and UI."""
-    if not volume or volume <= 0:
-        return 0.0
-    if competition is None:
-        competition = 1.0
-    volume_score = min(volume / 1000, 10)  # Cap influence of very high volume
-    competition_penalty = competition * competition  # Quadratic penalty
-    word_count = len((keyword_text or "").split())
-    long_tail_bonus = 1.2 if word_count >= 4 else 1.0
-    return (volume_score * (1 - competition_penalty) * long_tail_bonus) * 100.0
+    """Compute opportunity score on a unified 0–100 scale using multi-factor scoring."""
+    result = multifactor_score(
+        keyword=keyword_text or "",
+        volume=float(volume or 0),
+        competition=float(competition if competition is not None else 1.0),
+        cpc=None,
+        difficulty_mode="easy",
+    )
+    return float(result["score"])  # 0–100
 
 
 def annotate_keywords_with_scores(keywords: List[Dict]) -> List[Dict]:
@@ -227,7 +227,8 @@ def annotate_keywords_with_scores(keywords: List[Dict]) -> List[Dict]:
         # Strict pass criteria for the badge
         comp = k.get("competition", 1.0) or 1.0
         vol = k.get("volume", 0) or 0
-        k["is_quick_win"] = bool(comp <= 0.4 and vol >= 200 and score >= 30)
+        words = len((k.get("keyword", "") or "").split())
+        k["is_quick_win"] = bool(comp <= 0.5 and vol >= 50 and words >= 3 and k["opportunity_score"] >= 45)
         annotated.append(k)
     return annotated
 

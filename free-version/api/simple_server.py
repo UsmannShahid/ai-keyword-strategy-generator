@@ -45,6 +45,12 @@ class KeywordRequest(BaseModel):
     topic: str
     user_id: str = "test"
     user_plan: str = "free"
+    # Optional fields that frontend might send
+    max_results: Optional[int] = 10
+    industry: Optional[str] = None
+    audience: Optional[str] = None
+    country: Optional[str] = "us"
+    difficulty_mode: Optional[str] = "medium"
 
 @app.get("/")
 def root():
@@ -182,47 +188,68 @@ async def generate_brief(request: BriefRequest):
     
     try:
         prompt = f"""
-Create a comprehensive content brief for the keyword: "{request.keyword}"
+You are an SEO strategist. Create a content brief for "{request.keyword}" in a clear, human-readable format.
 
-Please provide a detailed content strategy that includes:
+Rules:
+- Output must look like a content plan/strategy document
+- Use numbered sections, short paragraphs, and bullet points
+- No filler phrases like "comprehensive overview" or "make informed decisions"
+- Every section must have actionable notes for the content writer
+- Each H2/H3 should include a word count target + bullet points on what to cover
+- Include SEO strategy (primary keyword, related keywords, snippet targets)
+- Include content gaps and competitive insights
+- End with goals, CTAs, and success metrics
 
-1. **Content Overview**
-   - Primary topic and focus
-   - Content type recommendation (blog post, guide, tutorial, etc.)
-   - Estimated word count
+Format exactly like this:
 
-2. **Target Audience**
-   - Primary audience demographics
-   - Pain points and challenges
-   - Search intent and motivation
+Content Overview
+Topic: [topic]
+Content Type: [blog post/guide/tutorial]
+Word Count: ~[number]
 
-3. **Content Structure**
-   - Suggested headline/title
-   - Key sections and subtopics to cover
-   - Introduction hook ideas
+Target Audience
+[demographic], [interest/profession]
+Pain Points: [specific problems they face]
+Search Intent: [what they want to accomplish]
 
-4. **SEO Strategy**
-   - Primary keyword: {request.keyword}
-   - 3-5 related keywords to target
-   - Meta description suggestion
+Suggested Headline
+"[compelling headline that includes keyword naturally]"
 
-5. **Content Goals**
-   - What should readers learn/achieve?
-   - Call-to-action recommendations
-   - Success metrics to track
+Content Structure
+H2: [section title] ([word count] words)
+• [what to cover - specific bullets]
+• [actionable guidance for writer]
 
-6. **Competitive Insights**
-   - What gaps exist in current content?
-   - Unique angle or perspective to take
-   - Content depth and quality expectations
+H2: [next section] ([word count] words)
+• [specific points to address]
+• [examples or data to include]
 
-Make this actionable and specific for content creators. Focus on providing real value and practical guidance.
+[Continue with 4-6 H2 sections total]
+
+SEO Strategy
+Primary Keyword: {request.keyword}
+Related Keywords: [3-5 related terms]
+Snippet Targets: "[question]", "[another question]"
+
+Content Gaps & Competitive Insights
+[what's missing from current content on this topic]
+[opportunity for differentiation]
+
+CTA & Success Metrics
+CTA: [specific call to action]
+Metrics: [measurable outcomes to track]
+
+Meta Info
+Title: [SEO title under 60 chars]
+Meta Description: [compelling description under 160 chars]
+
+Make this specific and actionable - not generic advice.
 """
 
         response = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a content strategy expert. Create detailed, actionable content briefs that help content creators produce high-quality, SEO-optimized content."},
+                {"role": "system", "content": "You are an SEO strategist who creates practical content briefs. Write in a clear, structured format with specific word counts, actionable bullets, and no fluff. Focus on what content writers actually need to create great content."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,

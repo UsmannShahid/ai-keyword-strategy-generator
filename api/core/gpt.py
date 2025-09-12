@@ -9,9 +9,12 @@ except Exception:  # ImportError or version mismatch
 from .env import get_openai_api_key
 
 BRIEF_SYSTEM = (
-    "You are an SEO content strategist. Generate a structured content brief in JSON format. "
-    "Output STRICT JSON with these exact keys: target_reader, search_intent, angle, "
-    "outline, key_entities, faqs, checklist. Make it practical and actionable for non-SEO experts."
+    "You're a content strategist who helps regular people create amazing content. Your job is to write "
+    "content briefs that sound natural and helpful - not robotic or overly formal. Think like you're "
+    "advising a friend who wants to write great content about their topic. "
+    "Use conversational language, practical examples, and avoid SEO jargon. "
+    "Return JSON with these keys: target_reader, search_intent, angle, outline, key_entities, faqs, "
+    "checklist, meta_title, meta_description. Outline should be objects with 'heading' and 'description'."
 )
 
 
@@ -27,30 +30,44 @@ def _get_client():
 
 def generate_brief(keyword: str, model: str, variant: str = "a") -> dict:
     if variant.lower() == "b":
-        # Variant B - Alternative approach with different angle
+        # Variant B - Alternative creative approach
         system_msg = (
-            "You are an SEO content strategist specializing in creative, alternative approaches. "
-            "Generate a structured content brief in JSON format with these exact keys: "
-            "target_reader, search_intent, angle, outline, key_entities, faqs, checklist. "
-            "Focus on unique angles and unexplored approaches. Make it actionable for non-SEO experts."
+            "You're a creative content strategist who loves finding fresh, unique angles. Help someone "
+            "create content that stands out from the crowd - think outside the box while staying practical. "
+            "Write like you're brainstorming with a creative friend. Use natural, conversational language "
+            "and avoid corporate buzzwords. Focus on what would genuinely interest readers. "
+            "Return JSON with these keys: target_reader, search_intent, angle, outline, key_entities, faqs, "
+            "checklist, meta_title, meta_description. Outline should be objects with 'heading' and 'description'."
         )
         user_prompt = (
-            f"Target keyword: {keyword}\n\n"
-            "Create an ALTERNATIVE content brief with a fresh, creative angle that stands out. "
-            "JSON format with: target_reader (who this content is for), search_intent (what users want), "
-            "angle (your unique approach), outline (array of H2/H3 sections), key_entities (important terms/brands), "
-            "faqs (array of Q&A), checklist (array of on-page optimization steps)."
+            f"Let's create something different about '{keyword}' - what's a fresh angle nobody else is taking?\n\n"
+            "Think about:\n"
+            "• target_reader: Who would really benefit from this? (be specific about their situation)\n"
+            "• search_intent: What are they actually hoping to find?\n"
+            "• angle: What's your unique spin that makes this interesting?\n"
+            "• outline: Break it down into sections that flow naturally (heading + description for each)\n"
+            "• key_entities: What terms/brands/concepts should we mention?\n"
+            "• faqs: What questions do real people ask about this?\n"
+            "• checklist: Practical steps to make the content great\n"
+            "• meta_title: A compelling title under 60 characters\n"
+            "• meta_description: Hook readers in under 160 characters"
         )
     else:
         # Variant A - Standard comprehensive approach
         system_msg = BRIEF_SYSTEM
         user_prompt = (
-            f"Target keyword: {keyword}\n\n"
-            "Create a comprehensive content brief. Return JSON with: "
-            "target_reader (who this content is for), search_intent (what users want), "
-            "angle (your content approach), outline (array of H2/H3 sections), "
-            "key_entities (important terms/brands), faqs (array of Q&A), "
-            "checklist (array of on-page optimization steps)."
+            f"I need help creating great content about '{keyword}'. Can you help me put together a solid plan?\n\n"
+            "Here's what would be helpful:\n"
+            "• target_reader: Who's this content really for? (think about their specific needs)\n"
+            "• search_intent: What are they trying to accomplish when they search for this?\n"
+            "• angle: What's your recommended approach to make this valuable?\n"
+            "• outline: How should I structure this? (section headings with brief descriptions)\n"
+            "• key_entities: What important terms, brands, or concepts should I include?\n"
+            "• faqs: What questions do people commonly have about this topic?\n"
+            "• checklist: What are the key things I should remember while writing?\n"
+            "• meta_title: A good title for search results (under 60 characters)\n"
+            "• meta_description: A description that gets people to click (under 160 characters)\n\n"
+            "Make it practical and easy to follow - I want to create something that actually helps people!"
         )
 
     # Chat Completions (v1 SDK)
@@ -83,15 +100,23 @@ def generate_brief(keyword: str, model: str, variant: str = "a") -> dict:
     try:
         return json.loads(resp.choices[0].message.content.strip())
     except json.JSONDecodeError:
-        # Fallback to plain text format
+        # Fallback to natural, helpful format
         return {
-            "target_reader": "General audience interested in " + keyword,
-            "search_intent": "Informational and commercial research",
-            "angle": "Comprehensive guide covering all aspects",
-            "outline": ["Introduction", "Main Benefits", "How to Choose", "Comparison", "Conclusion"],
-            "key_entities": [keyword],
-            "faqs": [{"q": f"What is {keyword}?", "a": "A detailed explanation..."}],
-            "checklist": ["Include target keyword in title", "Add relevant images", "Include internal links"]
+            "target_reader": f"People who are exploring {keyword} and want practical, easy-to-understand guidance",
+            "search_intent": "Looking for helpful information and actionable advice",
+            "angle": f"A practical, no-nonsense guide that actually helps people understand {keyword}",
+            "outline": [
+                {"heading": "Getting Started", "description": f"What you need to know about {keyword} before diving in"},
+                {"heading": "Why This Matters", "description": f"Real benefits and reasons people care about {keyword}"},
+                {"heading": "Your Options", "description": f"Different approaches and what works best for different situations"},
+                {"heading": "Making the Right Choice", "description": f"How to decide what's best for your specific needs"},
+                {"heading": "Next Steps", "description": f"What to do after you've learned about {keyword}"}
+            ],
+            "key_entities": [keyword.title()],
+            "faqs": [{"question": f"What exactly is {keyword}?", "answer": "We'll explain this clearly with examples that make sense."}],
+            "checklist": ["Write naturally - don't stuff keywords", "Add helpful images that support your points", "Link to other useful resources", "Make sure your intro hooks readers", "Break up text with clear headings"],
+            "meta_title": f"{keyword.title()}: A Practical Guide That Actually Helps",
+            "meta_description": f"Get clear, practical advice about {keyword}. No jargon, no fluff - just the info you actually need."
         }
 
 

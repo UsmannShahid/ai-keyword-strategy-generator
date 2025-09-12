@@ -1,6 +1,6 @@
 # api/models/schemas.py
 from pydantic import BaseModel, Field
-from typing import List, Optional, Any, Literal
+from typing import List, Optional, Any, Literal, Dict
 
 class Plan(BaseModel):
     # Use Literal for strict allowed values to avoid Field(pattern) compatibility issues across Pydantic versions
@@ -14,8 +14,43 @@ class GenerateBriefRequest(Plan, WithUser):
     keyword: str
     variant: Optional[str] = "a"  # "a" or "b" for different brief variations
 
+# Brief-specific models for structured data
+class OutlineItem(BaseModel):
+    heading: str
+    description: str
+
+class FAQItem(BaseModel):
+    question: str
+    answer: str
+
+class WordCountEstimate(BaseModel):
+    min_words: int
+    max_words: int
+    target_words: int
+    reasoning: str
+
+class BacklinkOpportunity(BaseModel):
+    category: str
+    websites: List[str]
+    reason: str
+    difficulty: Literal["Easy", "Medium", "Hard"]
+
+class ContentBrief(BaseModel):
+    target_reader: str
+    search_intent: str
+    angle: str
+    outline: List[OutlineItem]
+    key_entities: List[str]
+    faqs: List[FAQItem]
+    checklist: List[str]
+    meta_title: str
+    meta_description: str
+    # New heuristics-based fields
+    recommended_word_count: Optional[WordCountEstimate] = None
+    backlink_opportunities: Optional[List[BacklinkOpportunity]] = None
+
 class GenerateBriefResponse(BaseModel):
-    brief: Any  # Now supports both dict (structured) and str (fallback)
+    brief: ContentBrief  # Now uses structured ContentBrief model
     meta: Optional[dict] = None
 
 class SerpRequest(Plan, WithUser):
